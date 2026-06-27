@@ -8,6 +8,7 @@ import (
 	"github.com/lich0821/wcfLink/internal/config"
 	"github.com/lich0821/wcfLink/internal/httpapi"
 	"github.com/lich0821/wcfLink/internal/model"
+	"github.com/lich0821/wcfLink/internal/wecom"
 	coreversion "github.com/lich0821/wcfLink/version"
 )
 
@@ -20,6 +21,9 @@ type Settings = model.Settings
 type VersionInfo = coreversion.Info
 type WeComAccount = model.WeComAccount
 type WeComEvent = model.WeComEvent
+type WeComUserInfo = wecom.UserInfo
+type WeComDepartmentInfo = wecom.DepartmentInfo
+type WeComGroupChatInfo = wecom.GroupChatInfo
 
 type Engine struct {
 	app *internalapp.App
@@ -123,4 +127,20 @@ func (e *Engine) WeComAddAccount(ctx context.Context, account WeComAccount) erro
 
 func (e *Engine) WeComRemoveAccount(ctx context.Context, corpID string, agentID int) error {
 	return e.app.WeComRemoveAccount(ctx, corpID, agentID)
+}
+
+func (e *Engine) WeComGetUser(ctx context.Context, corpID, corpSecret, userID string) (WeComUserInfo, error) {
+	return e.app.WeComGetUser(ctx, corpID, corpSecret, userID)
+}
+
+func (e *Engine) WeComListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]WeComUserInfo, error) {
+	return e.app.WeComListDepartmentUsers(ctx, corpID, corpSecret, departmentID)
+}
+
+func (e *Engine) WeComListDepartments(ctx context.Context, corpID, corpSecret string) ([]WeComDepartmentInfo, error) {
+	return e.app.WeComListDepartments(ctx, corpID, corpSecret)
+}
+
+func (e *Engine) WeComGetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (WeComGroupChatInfo, error) {
+	return e.app.WeComGetGroupChat(ctx, corpID, corpSecret, chatID)
 }

@@ -245,6 +245,38 @@ func (s *wecomService) SendMedia(ctx context.Context, corpID, corpSecret string,
 		"outbound", mediaType, "", toUser, 0, "", mediaID, string(rawJSON))
 }
 
+func (s *wecomService) GetUser(ctx context.Context, corpID, corpSecret, userID string) (wecom.UserInfo, error) {
+	accessToken, err := s.wecomClient.GetAccessToken(ctx, corpID, corpSecret)
+	if err != nil {
+		return wecom.UserInfo{}, err
+	}
+	return s.wecomClient.GetUser(ctx, accessToken, userID)
+}
+
+func (s *wecomService) ListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]wecom.UserInfo, error) {
+	accessToken, err := s.wecomClient.GetAccessToken(ctx, corpID, corpSecret)
+	if err != nil {
+		return nil, err
+	}
+	return s.wecomClient.ListDepartmentUsers(ctx, accessToken, departmentID)
+}
+
+func (s *wecomService) ListDepartments(ctx context.Context, corpID, corpSecret string) ([]wecom.DepartmentInfo, error) {
+	accessToken, err := s.wecomClient.GetAccessToken(ctx, corpID, corpSecret)
+	if err != nil {
+		return nil, err
+	}
+	return s.wecomClient.ListDepartments(ctx, accessToken)
+}
+
+func (s *wecomService) GetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (wecom.GroupChatInfo, error) {
+	accessToken, err := s.wecomClient.GetAccessToken(ctx, corpID, corpSecret)
+	if err != nil {
+		return wecom.GroupChatInfo{}, err
+	}
+	return s.wecomClient.GetGroupChat(ctx, accessToken, chatID)
+}
+
 func (s *wecomService) ListAccounts(ctx context.Context) ([]model.WeComAccount, error) {
 	return s.store.ListWeComAccounts(ctx)
 }

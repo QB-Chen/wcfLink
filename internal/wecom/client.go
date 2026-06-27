@@ -203,6 +203,121 @@ func (c *Client) UploadMedia(ctx context.Context, accessToken, mediaType, fileNa
 	return result.MediaID, nil
 }
 
+func (c *Client) GetUser(ctx context.Context, accessToken, userID string) (UserInfo, error) {
+	u := fmt.Sprintf("%s/cgi-bin/user/get?access_token=%s&userid=%s",
+		c.apiBaseURL, url.QueryEscape(accessToken), url.QueryEscape(userID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return UserInfo{}, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return UserInfo{}, err
+	}
+	defer resp.Body.Close()
+	var result GetUserResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return UserInfo{}, fmt.Errorf("decode user response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return UserInfo{}, fmt.Errorf("get user failed: errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+	return result.UserInfo, nil
+}
+
+func (c *Client) ListDepartmentUsers(ctx context.Context, accessToken string, departmentID int) ([]UserInfo, error) {
+	u := fmt.Sprintf("%s/cgi-bin/user/list?access_token=%s&department_id=%d",
+		c.apiBaseURL, url.QueryEscape(accessToken), departmentID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result DepartmentUserListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode user list response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("list users failed: errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+	return result.UserList, nil
+}
+
+func (c *Client) ListDepartments(ctx context.Context, accessToken string) ([]DepartmentInfo, error) {
+	u := fmt.Sprintf("%s/cgi-bin/department/list?access_token=%s",
+		c.apiBaseURL, url.QueryEscape(accessToken))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var result DepartmentListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode department response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return nil, fmt.Errorf("list departments failed: errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+	return result.Department, nil
+}
+
+func (c *Client) GetGroupChat(ctx context.Context, accessToken, chatID string) (GroupChatInfo, error) {
+	u := fmt.Sprintf("%s/cgi-bin/appchat/get?access_token=%s&chatid=%s",
+		c.apiBaseURL, url.QueryEscape(accessToken), url.QueryEscape(chatID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return GroupChatInfo{}, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return GroupChatInfo{}, err
+	}
+	defer resp.Body.Close()
+	var result GetGroupChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return GroupChatInfo{}, fmt.Errorf("decode group chat response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return GroupChatInfo{}, fmt.Errorf("get group chat failed: errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+	return result.ChatInfo, nil
+}
+
+func (c *Client) CreateGroupChat(ctx context.Context, accessToken string, chatReq CreateGroupChatRequest) (string, error) {
+	u := fmt.Sprintf("%s/cgi-bin/appchat/create?access_token=%s",
+		c.apiBaseURL, url.QueryEscape(accessToken))
+	payload, err := json.Marshal(chatReq)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var result CreateGroupChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode create group chat response: %w", err)
+	}
+	if result.ErrCode != 0 {
+		return "", fmt.Errorf("create group chat failed: errcode=%d errmsg=%s", result.ErrCode, result.ErrMsg)
+	}
+	return result.ChatID, nil
+}
+
 func (c *Client) DownloadMedia(ctx context.Context, accessToken, mediaID string) ([]byte, string, error) {
 	u := fmt.Sprintf("%s/cgi-bin/media/get?access_token=%s&media_id=%s",
 		c.apiBaseURL, url.QueryEscape(accessToken), url.QueryEscape(mediaID))

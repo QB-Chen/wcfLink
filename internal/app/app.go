@@ -195,6 +195,22 @@ func (a *App) WeComRemoveAccount(ctx context.Context, corpID string, agentID int
 	return a.wecomSvc.RemoveAccount(ctx, corpID, agentID)
 }
 
+func (a *App) WeComGetUser(ctx context.Context, corpID, corpSecret, userID string) (wecom.UserInfo, error) {
+	return a.wecomSvc.GetUser(ctx, corpID, corpSecret, userID)
+}
+
+func (a *App) WeComListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]wecom.UserInfo, error) {
+	return a.wecomSvc.ListDepartmentUsers(ctx, corpID, corpSecret, departmentID)
+}
+
+func (a *App) WeComListDepartments(ctx context.Context, corpID, corpSecret string) ([]wecom.DepartmentInfo, error) {
+	return a.wecomSvc.ListDepartments(ctx, corpID, corpSecret)
+}
+
+func (a *App) WeComGetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (wecom.GroupChatInfo, error) {
+	return a.wecomSvc.GetGroupChat(ctx, corpID, corpSecret, chatID)
+}
+
 func buildWeComAccounts(cfg config.Config, ctx context.Context, st *store.Store) []wecom.AccountConfig {
 	var accounts []wecom.AccountConfig
 

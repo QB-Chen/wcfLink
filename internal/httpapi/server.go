@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/lich0821/wcfLink/internal/model"
+	"github.com/lich0821/wcfLink/internal/wecom"
 	coreversion "github.com/lich0821/wcfLink/version"
 )
 
@@ -34,6 +35,10 @@ type WeComService interface {
 	ListEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error)
 	AddAccount(ctx context.Context, account model.WeComAccount) error
 	RemoveAccount(ctx context.Context, corpID string, agentID int) error
+	GetUser(ctx context.Context, corpID, corpSecret, userID string) (wecom.UserInfo, error)
+	ListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]wecom.UserInfo, error)
+	ListDepartments(ctx context.Context, corpID, corpSecret string) ([]wecom.DepartmentInfo, error)
+	GetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (wecom.GroupChatInfo, error)
 }
 
 type WeComCallbackHandler interface {
@@ -77,6 +82,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/wecom/accounts", s.handleWeComRemoveAccount)
 	mux.HandleFunc("GET /api/wecom/events", s.handleWeComEvents)
 	mux.HandleFunc("POST /api/wecom/messages/send-text", s.handleWeComSendText)
+	mux.HandleFunc("GET /api/wecom/contacts/user", s.handleWeComGetUser)
+	mux.HandleFunc("GET /api/wecom/contacts/users", s.handleWeComListUsers)
+	mux.HandleFunc("GET /api/wecom/contacts/departments", s.handleWeComListDepartments)
+	mux.HandleFunc("GET /api/wecom/contacts/groupchat", s.handleWeComGetGroupChat)
 	if s.wecomHandler != nil {
 		mux.HandleFunc("GET /api/wecom/callback", s.handleWeComCallback)
 		mux.HandleFunc("POST /api/wecom/callback", s.handleWeComCallback)

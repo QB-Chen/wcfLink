@@ -59,6 +59,75 @@ type UploadMediaResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type UserInfo struct {
+	UserID     string   `json:"userid"`
+	Name       string   `json:"name"`
+	Department []int    `json:"department"`
+	Position   string   `json:"position,omitempty"`
+	Mobile     string   `json:"mobile,omitempty"`
+	Gender     string   `json:"gender,omitempty"`
+	Email      string   `json:"email,omitempty"`
+	BizMail    string   `json:"biz_mail,omitempty"`
+	Avatar     string   `json:"avatar,omitempty"`
+	Status     int      `json:"status"`
+	Alias      string   `json:"alias,omitempty"`
+}
+
+type GetUserResponse struct {
+	ErrCode int    `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+	UserInfo
+}
+
+type DepartmentUserListResponse struct {
+	ErrCode  int        `json:"errcode"`
+	ErrMsg   string     `json:"errmsg"`
+	UserList []UserInfo `json:"userlist"`
+}
+
+type DepartmentInfo struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	ParentID int    `json:"parentid"`
+	Order    int    `json:"order"`
+}
+
+type DepartmentListResponse struct {
+	ErrCode    int              `json:"errcode"`
+	ErrMsg     string           `json:"errmsg"`
+	Department []DepartmentInfo `json:"department"`
+}
+
+type GroupChatInfo struct {
+	ChatID   string           `json:"chatid"`
+	Name     string           `json:"name"`
+	Owner    string           `json:"owner"`
+	UserList []GroupChatMember `json:"userlist"`
+}
+
+type GroupChatMember struct {
+	UserID string `json:"userid"`
+}
+
+type GetGroupChatResponse struct {
+	ErrCode  int           `json:"errcode"`
+	ErrMsg   string        `json:"errmsg"`
+	ChatInfo GroupChatInfo  `json:"chat_info"`
+}
+
+type CreateGroupChatRequest struct {
+	Name     string   `json:"name"`
+	Owner    string   `json:"owner"`
+	UserList []string `json:"userlist"`
+	ChatID   string   `json:"chatid,omitempty"`
+}
+
+type CreateGroupChatResponse struct {
+	ErrCode int    `json:"errcode"`
+	ErrMsg  string `json:"errmsg"`
+	ChatID  string `json:"chatid"`
+}
+
 type InboundMessage struct {
 	ToUserName   string
 	FromUserName string

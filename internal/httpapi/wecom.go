@@ -115,3 +115,70 @@ func (s *Server) handleWeComSendText(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
+
+func (s *Server) handleWeComGetUser(w http.ResponseWriter, r *http.Request) {
+	corpID := strings.TrimSpace(r.URL.Query().Get("corp_id"))
+	corpSecret := strings.TrimSpace(r.URL.Query().Get("corp_secret"))
+	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
+	if corpID == "" || corpSecret == "" || userID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "corp_id, corp_secret and user_id are required"})
+		return
+	}
+	user, err := s.wecomSvc.GetUser(r.Context(), corpID, corpSecret, userID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, user)
+}
+
+func (s *Server) handleWeComListUsers(w http.ResponseWriter, r *http.Request) {
+	corpID := strings.TrimSpace(r.URL.Query().Get("corp_id"))
+	corpSecret := strings.TrimSpace(r.URL.Query().Get("corp_secret"))
+	deptIDStr := strings.TrimSpace(r.URL.Query().Get("department_id"))
+	if corpID == "" || corpSecret == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "corp_id and corp_secret are required"})
+		return
+	}
+	deptID, _ := strconv.Atoi(deptIDStr)
+	if deptID == 0 {
+		deptID = 1
+	}
+	users, err := s.wecomSvc.ListDepartmentUsers(r.Context(), corpID, corpSecret, deptID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": users})
+}
+
+func (s *Server) handleWeComListDepartments(w http.ResponseWriter, r *http.Request) {
+	corpID := strings.TrimSpace(r.URL.Query().Get("corp_id"))
+	corpSecret := strings.TrimSpace(r.URL.Query().Get("corp_secret"))
+	if corpID == "" || corpSecret == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "corp_id and corp_secret are required"})
+		return
+	}
+	departments, err := s.wecomSvc.ListDepartments(r.Context(), corpID, corpSecret)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": departments})
+}
+
+func (s *Server) handleWeComGetGroupChat(w http.ResponseWriter, r *http.Request) {
+	corpID := strings.TrimSpace(r.URL.Query().Get("corp_id"))
+	corpSecret := strings.TrimSpace(r.URL.Query().Get("corp_secret"))
+	chatID := strings.TrimSpace(r.URL.Query().Get("chat_id"))
+	if corpID == "" || corpSecret == "" || chatID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "corp_id, corp_secret and chat_id are required"})
+		return
+	}
+	chat, err := s.wecomSvc.GetGroupChat(r.Context(), corpID, corpSecret, chatID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, chat)
+}
