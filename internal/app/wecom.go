@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QB-Chen/wcfLink/internal/agent"
 	"github.com/QB-Chen/wcfLink/internal/model"
 	"github.com/QB-Chen/wcfLink/internal/store"
 	"github.com/QB-Chen/wcfLink/internal/wecom"
@@ -21,6 +22,7 @@ type wecomService struct {
 	logger      *slog.Logger
 	store       *store.Store
 	wecomClient *wecom.Client
+	agentInst   *agent.Agent
 }
 
 type wecomServiceConfig struct {
@@ -63,6 +65,20 @@ func (s *wecomService) HandleInbound(ctx context.Context, account wecom.AccountC
 	}
 
 	if msg.MsgType == "event" {
+		return
+	}
+
+	if s.agentInst != nil && msg.MsgType == "text" && msg.Content != "" {
+		session := agent.SessionKey{
+			ChannelType: "wecom",
+			UserID:      msg.FromUserName,
+			GroupID:     "",
+		}
+		go func() {
+			if err := s.agentInst.HandleMessage(context.Background(), session, msg.Content); err != nil {
+				s.logger.Error("agent handle wecom message failed", "err", err)
+			}
+		}()
 		return
 	}
 

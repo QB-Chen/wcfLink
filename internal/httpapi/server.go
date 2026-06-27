@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QB-Chen/wcfLink/internal/agent"
 	"github.com/QB-Chen/wcfLink/internal/ilink"
 	"github.com/QB-Chen/wcfLink/internal/model"
 	"github.com/QB-Chen/wcfLink/internal/wecom"
@@ -55,14 +56,16 @@ type Server struct {
 	service      Service
 	wecomSvc     WeComService
 	wecomHandler WeComCallbackHandler
+	agentInst    *agent.Agent
 }
 
-func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler) *Server {
+func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler, agentInst *agent.Agent) *Server {
 	return &Server{
 		logger:       logger,
 		service:      service,
 		wecomSvc:     wecomSvc,
 		wecomHandler: wecomHandler,
+		agentInst:    agentInst,
 	}
 }
 
@@ -100,7 +103,130 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/wecom/callback", s.handleWeComCallback)
 	}
 
+	mux.HandleFunc("GET /api/agent/status", s.handleAgentStatus)
+	mux.HandleFunc("GET /api/agent/conversations", s.handleAgentListConversations)
+	mux.HandleFunc("GET /api/agent/conversations/", s.handleAgentGetConversation)
+	mux.HandleFunc("DELETE /api/agent/conversations/", s.handleAgentDeleteConversation)
+	mux.HandleFunc("POST /api/agent/chat", s.handleAgentChat)
+
 	return withJSONContentType(mux)
+}
+
+func (s *Server) handleAgentStatus(w http.ResponseWriter, _ *http.Request) {
+	enabled := s.agentInst != nil
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": enabled,
+	})
+}
+
+func (s *Server) handleAgentListConversations(w http.ResponseWriter, r *http.Request) {
+	if s.agentInst == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent is not enabled"})
+		return
+	}
+	convs, err := s.agentInst.ConversationManager().ListConversations(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": convs})
+}
+
+func (s *Server) handleAgentGetConversation(w http.ResponseWriter, r *http.Request) {
+	if s.agentInst == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent is not enabled"})
+		return
+	}
+	convID := strings.TrimPrefix(r.URL.Path, "/api/agent/conversations/")
+	if convID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "conversation id is required"})
+		return
+	}
+	mgr := s.agentInst.ConversationManager()
+	conv, err := mgr.GetConversation(r.Context(), convID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "conversation not found"})
+		return
+	}
+	msgs, err := mgr.GetMessages(r.Context(), convID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"conversation": conv,
+		"messages":     msgs,
+	})
+}
+
+func (s *Server) handleAgentDeleteConversation(w http.ResponseWriter, r *http.Request) {
+	if s.agentInst == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent is not enabled"})
+		return
+	}
+	convID := strings.TrimPrefix(r.URL.Path, "/api/agent/conversations/")
+	if convID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "conversation id is required"})
+		return
+	}
+	if err := s.agentInst.ConversationManager().DeleteConversation(r.Context(), convID); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
+	if s.agentInst == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "agent is not enabled"})
+		return
+	}
+	var req struct {
+		SessionID string `json:"session_id"`
+		Message   string `json:"message"`
+		Mode      string `json:"mode"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "message is required"})
+		return
+	}
+	if req.SessionID == "" {
+		req.SessionID = "http-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	}
+
+	session := agent.SessionKey{
+		ChannelType: "http",
+		UserID:      req.SessionID,
+		GroupID:     "",
+	}
+
+	var replies []string
+	mockSender := &httpChatSender{replies: &replies}
+
+	tempAgent := agent.NewWithSender(s.agentInst, mockSender)
+	if err := tempAgent.HandleMessage(r.Context(), session, req.Message); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	reply := strings.Join(replies, "\n")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id": req.SessionID,
+		"reply":      reply,
+	})
+}
+
+type httpChatSender struct {
+	replies *[]string
+}
+
+func (s *httpChatSender) SendText(_ context.Context, _ agent.SessionKey, text string) error {
+	*s.replies = append(*s.replies, text)
+	return nil
 }
 
 func (s *Server) handleLive(w http.ResponseWriter, _ *http.Request) {
