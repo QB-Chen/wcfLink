@@ -242,7 +242,7 @@ func (s *Store) SaveInboundMessage(ctx context.Context, accountID string, msg il
 	if err != nil {
 		return err
 	}
-	bodyText := extractBodyText(msg)
+	bodyText := ilink.ExtractBodyText(msg)
 	now := time.Now().UTC()
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -255,7 +255,7 @@ func (s *Store) SaveInboundMessage(ctx context.Context, accountID string, msg il
 INSERT OR IGNORE INTO events (
   account_id, direction, event_type, from_user_id, to_user_id, group_id, message_id, context_token, body_text, media_path, media_file_name, media_mime_type, raw_json, created_at
 ) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		accountID, detectEventType(msg), msg.FromUserID, msg.ToUserID, msg.GroupID, msg.MessageID, msg.ContextToken, bodyText, mediaPath, mediaFileName, mediaMimeType, string(raw), now,
+		accountID, ilink.DetectEventType(msg), msg.FromUserID, msg.ToUserID, msg.GroupID, msg.MessageID, msg.ContextToken, bodyText, mediaPath, mediaFileName, mediaMimeType, string(raw), now,
 	)
 	if err != nil {
 		return err
@@ -495,63 +495,6 @@ func (s *Store) execMigrationCompat(ctx context.Context, stmt string) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	return nil
-}
-
-func extractBodyText(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case ilink.MessageItemTypeText:
-			if item.TextItem != nil {
-				return item.TextItem.Text
-			}
-		case ilink.MessageItemTypeVoice:
-			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
-				return item.VoiceItem.Text
-			}
-		case ilink.MessageItemTypeImage:
-			return "[image]"
-		case ilink.MessageItemTypeFile:
-			if item.FileItem != nil && item.FileItem.FileName != "" {
-				return "[file] " + item.FileItem.FileName
-			}
-			return "[file]"
-		case ilink.MessageItemTypeVideo:
-			return "[video]"
-		case ilink.MessageItemTypeToolCallStart:
-			if item.ToolCallStartItem != nil {
-				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
-			}
-			return "[tool_call_start]"
-		case ilink.MessageItemTypeToolCallResult:
-			if item.ToolCallResultItem != nil {
-				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
-			}
-			return "[tool_call_result]"
-		}
-	}
-	return ""
-}
-
-func detectEventType(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case ilink.MessageItemTypeText:
-			return "text"
-		case ilink.MessageItemTypeImage:
-			return "image"
-		case ilink.MessageItemTypeVoice:
-			return "voice"
-		case ilink.MessageItemTypeFile:
-			return "file"
-		case ilink.MessageItemTypeVideo:
-			return "video"
-		case ilink.MessageItemTypeToolCallStart:
-			return "tool_call_start"
-		case ilink.MessageItemTypeToolCallResult:
-			return "tool_call_result"
-		}
-	}
-	return "unknown"
 }
 
 func stringsNotEmpty(values ...string) bool {

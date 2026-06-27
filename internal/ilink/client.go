@@ -298,7 +298,18 @@ func (c *Client) SendTyping(ctx context.Context, baseURL, token, ilinkUserID, ty
 			"channel_version": c.channelVersion,
 		},
 	}
-	return c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/sendtyping", token, body, nil)
+	var out NotifyResponse
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/sendtyping", token, body, &out); err != nil {
+		return err
+	}
+	if out.Ret != 0 {
+		errText := out.ErrMsg
+		if strings.TrimSpace(errText) == "" {
+			errText = "sendtyping returned non-zero status"
+		}
+		return fmt.Errorf("%s (ret=%d)", errText, out.Ret)
+	}
+	return nil
 }
 
 func (c *Client) NotifyStart(ctx context.Context, baseURL, token string) (NotifyResponse, error) {
@@ -370,6 +381,63 @@ func (c *Client) doJSON(req *http.Request, token string, payload []byte, out any
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
+}
+
+func ExtractBodyText(msg WeixinMessage) string {
+	for _, item := range msg.ItemList {
+		switch item.Type {
+		case MessageItemTypeText:
+			if item.TextItem != nil {
+				return item.TextItem.Text
+			}
+		case MessageItemTypeVoice:
+			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
+				return item.VoiceItem.Text
+			}
+		case MessageItemTypeImage:
+			return "[image]"
+		case MessageItemTypeFile:
+			if item.FileItem != nil && item.FileItem.FileName != "" {
+				return "[file] " + item.FileItem.FileName
+			}
+			return "[file]"
+		case MessageItemTypeVideo:
+			return "[video]"
+		case MessageItemTypeToolCallStart:
+			if item.ToolCallStartItem != nil {
+				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
+			}
+			return "[tool_call_start]"
+		case MessageItemTypeToolCallResult:
+			if item.ToolCallResultItem != nil {
+				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
+			}
+			return "[tool_call_result]"
+		}
+	}
+	return ""
+}
+
+func DetectEventType(msg WeixinMessage) string {
+	for _, item := range msg.ItemList {
+		switch item.Type {
+		case MessageItemTypeText:
+			return "text"
+		case MessageItemTypeImage:
+			return "image"
+		case MessageItemTypeVoice:
+			return "voice"
+		case MessageItemTypeFile:
+			return "file"
+		case MessageItemTypeVideo:
+			return "video"
+		case MessageItemTypeToolCallStart:
+			return "tool_call_start"
+		case MessageItemTypeToolCallResult:
+			return "tool_call_result"
+		}
+	}
+	return "unknown"
 }
 
 func randomWechatUIN() string {

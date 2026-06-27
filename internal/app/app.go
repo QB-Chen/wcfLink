@@ -513,8 +513,8 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 	payload, err := json.Marshal(map[string]any{
 		"account_id":      account.AccountID,
 		"base_url":        account.BaseURL,
-		"event_type":      detectEventType(msg),
-		"body_text":       extractBodyText(msg),
+		"event_type":      ilink.DetectEventType(msg),
+		"body_text":       ilink.ExtractBodyText(msg),
 		"from_user_id":    msg.FromUserID,
 		"to_user_id":      msg.ToUserID,
 		"group_id":        msg.GroupID,
@@ -743,62 +743,7 @@ func isAudioFilePath(filePath string) bool {
 	}
 }
 
-func extractBodyText(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case ilink.MessageItemTypeText:
-			if item.TextItem != nil {
-				return item.TextItem.Text
-			}
-		case ilink.MessageItemTypeVoice:
-			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
-				return item.VoiceItem.Text
-			}
-		case ilink.MessageItemTypeImage:
-			return "[image]"
-		case ilink.MessageItemTypeFile:
-			if item.FileItem != nil && item.FileItem.FileName != "" {
-				return "[file] " + item.FileItem.FileName
-			}
-			return "[file]"
-		case ilink.MessageItemTypeVideo:
-			return "[video]"
-		case ilink.MessageItemTypeToolCallStart:
-			if item.ToolCallStartItem != nil {
-				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
-			}
-			return "[tool_call_start]"
-		case ilink.MessageItemTypeToolCallResult:
-			if item.ToolCallResultItem != nil {
-				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
-			}
-			return "[tool_call_result]"
-		}
-	}
-	return ""
-}
 
-func detectEventType(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case ilink.MessageItemTypeText:
-			return "text"
-		case ilink.MessageItemTypeImage:
-			return "image"
-		case ilink.MessageItemTypeVoice:
-			return "voice"
-		case ilink.MessageItemTypeFile:
-			return "file"
-		case ilink.MessageItemTypeVideo:
-			return "video"
-		case ilink.MessageItemTypeToolCallStart:
-			return "tool_call_start"
-		case ilink.MessageItemTypeToolCallResult:
-			return "tool_call_result"
-		}
-	}
-	return "unknown"
-}
 
 func (s *service) deliverWebhook(webhookURL string, payload []byte) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, webhookURL, bytes.NewReader(payload))
