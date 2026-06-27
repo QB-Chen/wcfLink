@@ -14,23 +14,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lich0821/wcfLink/internal/config"
-	"github.com/lich0821/wcfLink/internal/httpapi"
-	"github.com/lich0821/wcfLink/internal/ilink"
-	"github.com/lich0821/wcfLink/internal/model"
-	"github.com/lich0821/wcfLink/internal/store"
-	"github.com/lich0821/wcfLink/internal/worker"
+	"github.com/QB-Chen/wcfLink/internal/config"
+	"github.com/QB-Chen/wcfLink/internal/httpapi"
+	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/store"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
+	"github.com/QB-Chen/wcfLink/internal/worker"
 )
 
 type App struct {
-	cfg     config.Config
-	logger  *slog.Logger
-	store   *store.Store
-	client  *ilink.Client
-	pollers *worker.PollerManager
-	server  *http.Server
-	runtime *runtimeState
-	svc     *service
+	cfg          config.Config
+	logger       *slog.Logger
+	store        *store.Store
+	client       *ilink.Client
+	pollers      *worker.PollerManager
+	server       *http.Server
+	runtime      *runtimeState
+	svc          *service
+	wecomSvc     *wecomService
+	wecomHandler *wecom.CallbackHandler
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -49,6 +52,22 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	}
 	pollers := worker.NewPollerManager(st, client, logger, svc.HandleInboundMessage)
 	svc.pollers = pollers
+
+	wecomClient := wecom.NewClient(cfg.WeComAPIBaseURL)
+	wecomSvc := newWeComService(wecomServiceConfig{
+		WeComWebhookURL: cfg.WeComWebhookURL,
+	}, logger, st, wecomClient)
+
+	var wecomHandler *wecom.CallbackHandler
+	wecomAccounts := buildWeComAccounts(cfg, ctx, st)
+	if len(wecomAccounts) > 0 {
+		var err2 error
+		wecomHandler, err2 = wecom.NewCallbackHandler(wecomAccounts, logger, wecomSvc.HandleInbound)
+		if err2 != nil {
+			return nil, fmt.Errorf("init wecom callback handler: %w", err2)
+		}
+	}
+
 	api := httpapi.NewServer(&service{
 		cfg:     cfg,
 		logger:  logger,
@@ -56,16 +75,18 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		client:  client,
 		pollers: pollers,
 		runtime: runtime,
-	}, logger)
+	}, logger, wecomSvc, wecomHandler)
 
 	return &App{
-		cfg:     cfg,
-		logger:  logger,
-		store:   st,
-		client:  client,
-		pollers: pollers,
-		runtime: runtime,
-		svc:     svc,
+		cfg:          cfg,
+		logger:       logger,
+		store:        st,
+		client:       client,
+		pollers:      pollers,
+		runtime:      runtime,
+		svc:          svc,
+		wecomSvc:     wecomSvc,
+		wecomHandler: wecomHandler,
 		server: &http.Server{
 			Addr:              cfg.ListenAddr,
 			Handler:           api.Handler(),
@@ -148,6 +169,107 @@ func (a *App) SendMedia(ctx context.Context, accountID, toUserID, mediaType, fil
 
 func (a *App) LogoutAccount(ctx context.Context, accountID string) error {
 	return a.svc.LogoutAccount(ctx, accountID)
+}
+
+func (a *App) GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (ilink.GetConfigResponse, error) {
+	return a.svc.GetConfig(ctx, accountID, ilinkUserID, contextToken)
+}
+
+func (a *App) SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error {
+	return a.svc.SendTyping(ctx, accountID, ilinkUserID, typingTicket, status)
+}
+
+func (a *App) NotifyStart(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	return a.svc.NotifyStart(ctx, accountID)
+}
+
+func (a *App) NotifyStop(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	return a.svc.NotifyStop(ctx, accountID)
+}
+
+func (a *App) WeComSendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error {
+	return a.wecomSvc.SendText(ctx, corpID, corpSecret, agentID, toUser, text)
+}
+
+func (a *App) WeComSendMedia(ctx context.Context, corpID, corpSecret string, agentID int, toUser, mediaType, filePath string, fileData []byte) error {
+	return a.wecomSvc.SendMedia(ctx, corpID, corpSecret, agentID, toUser, mediaType, filePath, fileData)
+}
+
+func (a *App) WeComListAccounts(ctx context.Context) ([]model.WeComAccount, error) {
+	return a.wecomSvc.ListAccounts(ctx)
+}
+
+func (a *App) WeComListEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error) {
+	return a.wecomSvc.ListEvents(ctx, afterID, limit)
+}
+
+func (a *App) WeComAddAccount(ctx context.Context, account model.WeComAccount) error {
+	return a.wecomSvc.AddAccount(ctx, account)
+}
+
+func (a *App) WeComRemoveAccount(ctx context.Context, corpID string, agentID int) error {
+	return a.wecomSvc.RemoveAccount(ctx, corpID, agentID)
+}
+
+func (a *App) WeComGetUser(ctx context.Context, corpID, corpSecret, userID string) (wecom.UserInfo, error) {
+	return a.wecomSvc.GetUser(ctx, corpID, corpSecret, userID)
+}
+
+func (a *App) WeComListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]wecom.UserInfo, error) {
+	return a.wecomSvc.ListDepartmentUsers(ctx, corpID, corpSecret, departmentID)
+}
+
+func (a *App) WeComListDepartments(ctx context.Context, corpID, corpSecret string) ([]wecom.DepartmentInfo, error) {
+	return a.wecomSvc.ListDepartments(ctx, corpID, corpSecret)
+}
+
+func (a *App) WeComGetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (wecom.GroupChatInfo, error) {
+	return a.wecomSvc.GetGroupChat(ctx, corpID, corpSecret, chatID)
+}
+
+func buildWeComAccounts(cfg config.Config, ctx context.Context, st *store.Store) []wecom.AccountConfig {
+	var accounts []wecom.AccountConfig
+
+	if cfg.WeComCorpID != "" && cfg.WeComCorpSecret != "" {
+		accounts = append(accounts, wecom.AccountConfig{
+			CorpID:         cfg.WeComCorpID,
+			CorpSecret:     cfg.WeComCorpSecret,
+			AgentID:        cfg.WeComAgentID,
+			CallbackToken:  cfg.WeComCallbackToken,
+			CallbackAESKey: cfg.WeComCallbackAESKey,
+		})
+		_ = st.UpsertWeComAccount(ctx, model.WeComAccount{
+			CorpID:         cfg.WeComCorpID,
+			CorpSecret:     cfg.WeComCorpSecret,
+			AgentID:        cfg.WeComAgentID,
+			CallbackToken:  cfg.WeComCallbackToken,
+			CallbackAESKey: cfg.WeComCallbackAESKey,
+			Enabled:        true,
+			AutoReply:      cfg.WeComAutoReply,
+			WebhookURL:     cfg.WeComWebhookURL,
+		})
+	}
+
+	stored, err := st.ListWeComAccounts(ctx)
+	if err == nil {
+		for _, s := range stored {
+			if !s.Enabled {
+				continue
+			}
+			if s.CorpID == cfg.WeComCorpID && s.AgentID == cfg.WeComAgentID {
+				continue
+			}
+			accounts = append(accounts, wecom.AccountConfig{
+				CorpID:         s.CorpID,
+				CorpSecret:     s.CorpSecret,
+				AgentID:        s.AgentID,
+				CallbackToken:  s.CallbackToken,
+				CallbackAESKey: s.CallbackAESKey,
+			})
+		}
+	}
+
+	return accounts
 }
 
 type service struct {
@@ -335,6 +457,38 @@ func (s *service) SendMedia(ctx context.Context, accountID, toUserID, mediaType,
 	return nil
 }
 
+func (s *service) GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (ilink.GetConfigResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.GetConfigResponse{}, err
+	}
+	return s.client.GetConfig(ctx, account.BaseURL, account.Token, ilinkUserID, contextToken)
+}
+
+func (s *service) SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	return s.client.SendTyping(ctx, account.BaseURL, account.Token, ilinkUserID, typingTicket, status)
+}
+
+func (s *service) NotifyStart(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.NotifyResponse{}, err
+	}
+	return s.client.NotifyStart(ctx, account.BaseURL, account.Token)
+}
+
+func (s *service) NotifyStop(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.NotifyResponse{}, err
+	}
+	return s.client.NotifyStop(ctx, account.BaseURL, account.Token)
+}
+
 func (s *service) HandleInboundMessage(ctx context.Context, account model.Account, msg ilink.WeixinMessage) error {
 	mediaPath, mediaFileName, mediaMimeType := "", "", ""
 	if mediaItem, ok := firstInboundMediaItem(msg); ok {
@@ -359,10 +513,12 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 	payload, err := json.Marshal(map[string]any{
 		"account_id":      account.AccountID,
 		"base_url":        account.BaseURL,
-		"event_type":      detectEventType(msg),
-		"body_text":       extractBodyText(msg),
+		"event_type":      ilink.DetectEventType(msg),
+		"body_text":       ilink.ExtractBodyText(msg),
 		"from_user_id":    msg.FromUserID,
 		"to_user_id":      msg.ToUserID,
+		"group_id":        msg.GroupID,
+		"session_id":      msg.SessionID,
 		"message_id":      msg.MessageID,
 		"context_token":   msg.ContextToken,
 		"media_path":      mediaPath,
@@ -379,11 +535,11 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 	if settings.WebhookURL == "" {
 		text := "[non-text]"
 		for _, item := range msg.ItemList {
-			if item.Type == 1 && item.TextItem != nil && item.TextItem.Text != "" {
+			if item.Type == ilink.MessageItemTypeText && item.TextItem != nil && item.TextItem.Text != "" {
 				text = item.TextItem.Text
 				break
 			}
-			if item.Type == 3 && item.VoiceItem != nil && item.VoiceItem.Text != "" {
+			if item.Type == ilink.MessageItemTypeVoice && item.VoiceItem != nil && item.VoiceItem.Text != "" {
 				text = item.VoiceItem.Text
 				break
 			}
@@ -476,7 +632,7 @@ func normalizeMediaSendType(mediaType, filePath string) (string, int, error) {
 func firstInboundMediaItem(msg ilink.WeixinMessage) (ilink.MessageItem, bool) {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 2, 3, 4, 5:
+		case ilink.MessageItemTypeImage, ilink.MessageItemTypeVoice, ilink.MessageItemTypeFile, ilink.MessageItemTypeVideo:
 			return item, true
 		}
 	}
@@ -587,48 +743,7 @@ func isAudioFilePath(filePath string) bool {
 	}
 }
 
-func extractBodyText(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case 1:
-			if item.TextItem != nil {
-				return item.TextItem.Text
-			}
-		case 3:
-			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
-				return item.VoiceItem.Text
-			}
-		case 2:
-			return "[image]"
-		case 4:
-			if item.FileItem != nil && item.FileItem.FileName != "" {
-				return "[file] " + item.FileItem.FileName
-			}
-			return "[file]"
-		case 5:
-			return "[video]"
-		}
-	}
-	return ""
-}
 
-func detectEventType(msg ilink.WeixinMessage) string {
-	for _, item := range msg.ItemList {
-		switch item.Type {
-		case 1:
-			return "text"
-		case 2:
-			return "image"
-		case 3:
-			return "voice"
-		case 4:
-			return "file"
-		case 5:
-			return "video"
-		}
-	}
-	return "unknown"
-}
 
 func (s *service) deliverWebhook(webhookURL string, payload []byte) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, webhookURL, bytes.NewReader(payload))

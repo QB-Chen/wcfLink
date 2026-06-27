@@ -45,10 +45,11 @@ type TextItem struct {
 }
 
 type VoiceItem struct {
-	Media          CDNMedia `json:"media,omitempty"`
-	Text       string `json:"text,omitempty"`
-	EncodeType int    `json:"encode_type,omitempty"`
-	Playtime   int    `json:"playtime,omitempty"`
+	Media      CDNMedia `json:"media,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	EncodeType int      `json:"encode_type,omitempty"`
+	Playtime   int      `json:"playtime,omitempty"`
+	SampleRate int      `json:"sample_rate,omitempty"`
 }
 
 type FileItem struct {
@@ -62,28 +63,72 @@ type CDNMedia struct {
 	EncryptQueryParam string `json:"encrypt_query_param,omitempty"`
 	AESKey            string `json:"aes_key,omitempty"`
 	EncryptType       int    `json:"encrypt_type,omitempty"`
+	FullURL           string `json:"full_url,omitempty"`
 }
 
 type ImageItem struct {
-	Media      CDNMedia `json:"media,omitempty"`
-	ThumbMedia CDNMedia `json:"thumb_media,omitempty"`
-	AESKey     string   `json:"aeskey,omitempty"`
-	MidSize    int      `json:"mid_size,omitempty"`
+	Media       CDNMedia `json:"media,omitempty"`
+	ThumbMedia  CDNMedia `json:"thumb_media,omitempty"`
+	AESKey      string   `json:"aeskey,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	MidSize     int      `json:"mid_size,omitempty"`
+	ThumbSize   int      `json:"thumb_size,omitempty"`
+	ThumbHeight int      `json:"thumb_height,omitempty"`
+	ThumbWidth  int      `json:"thumb_width,omitempty"`
+	HDSize      int      `json:"hd_size,omitempty"`
 }
 
 type VideoItem struct {
-	Media      CDNMedia `json:"media,omitempty"`
-	ThumbMedia CDNMedia `json:"thumb_media,omitempty"`
-	VideoSize  int      `json:"video_size,omitempty"`
+	Media       CDNMedia `json:"media,omitempty"`
+	ThumbMedia  CDNMedia `json:"thumb_media,omitempty"`
+	VideoSize   int      `json:"video_size,omitempty"`
+	PlayLength  int      `json:"play_length,omitempty"`
+	VideoMD5    string   `json:"video_md5,omitempty"`
+	ThumbSize   int      `json:"thumb_size,omitempty"`
+	ThumbHeight int      `json:"thumb_height,omitempty"`
+	ThumbWidth  int      `json:"thumb_width,omitempty"`
 }
 
+type RefMessage struct {
+	MessageItem *MessageItem `json:"message_item,omitempty"`
+	Title       string       `json:"title,omitempty"`
+}
+
+type ToolCallStartItem struct {
+	ToolName   string `json:"tool_name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+}
+
+type ToolCallResultItem struct {
+	ToolName   string `json:"tool_name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Status     string `json:"status,omitempty"`
+}
+
+const (
+	MessageItemTypeText           = 1
+	MessageItemTypeImage          = 2
+	MessageItemTypeVoice          = 3
+	MessageItemTypeFile           = 4
+	MessageItemTypeVideo          = 5
+	MessageItemTypeToolCallStart  = 11
+	MessageItemTypeToolCallResult = 12
+)
+
 type MessageItem struct {
-	Type      int        `json:"type,omitempty"`
-	TextItem  *TextItem  `json:"text_item,omitempty"`
-	VoiceItem *VoiceItem `json:"voice_item,omitempty"`
-	FileItem  *FileItem  `json:"file_item,omitempty"`
-	ImageItem *ImageItem `json:"image_item,omitempty"`
-	VideoItem *VideoItem `json:"video_item,omitempty"`
+	Type               int                  `json:"type,omitempty"`
+	CreateTimeMS       int64                `json:"create_time_ms,omitempty"`
+	UpdateTimeMS       int64                `json:"update_time_ms,omitempty"`
+	IsCompleted        bool                 `json:"is_completed,omitempty"`
+	MsgID              string               `json:"msg_id,omitempty"`
+	RefMsg             *RefMessage          `json:"ref_msg,omitempty"`
+	TextItem           *TextItem            `json:"text_item,omitempty"`
+	VoiceItem          *VoiceItem           `json:"voice_item,omitempty"`
+	FileItem           *FileItem            `json:"file_item,omitempty"`
+	ImageItem          *ImageItem           `json:"image_item,omitempty"`
+	VideoItem          *VideoItem           `json:"video_item,omitempty"`
+	ToolCallStartItem  *ToolCallStartItem   `json:"tool_call_start_item,omitempty"`
+	ToolCallResultItem *ToolCallResultItem  `json:"tool_call_result_item,omitempty"`
 }
 
 type WeixinMessage struct {
@@ -93,10 +138,15 @@ type WeixinMessage struct {
 	ToUserID     string        `json:"to_user_id,omitempty"`
 	ClientID     string        `json:"client_id,omitempty"`
 	CreateTimeMS int64         `json:"create_time_ms,omitempty"`
+	UpdateTimeMS int64         `json:"update_time_ms,omitempty"`
+	DeleteTimeMS int64         `json:"delete_time_ms,omitempty"`
+	SessionID    string        `json:"session_id,omitempty"`
+	GroupID      string        `json:"group_id,omitempty"`
 	MessageType  int           `json:"message_type,omitempty"`
 	MessageState int           `json:"message_state,omitempty"`
 	ItemList     []MessageItem `json:"item_list,omitempty"`
 	ContextToken string        `json:"context_token,omitempty"`
+	RunID        string        `json:"run_id,omitempty"`
 }
 
 type GetUpdatesResponse struct {
@@ -114,11 +164,25 @@ type SendMessageResponse struct {
 	ErrMsg  string `json:"errmsg,omitempty"`
 }
 
+type GetConfigResponse struct {
+	Ret           int    `json:"ret,omitempty"`
+	ErrMsg        string `json:"errmsg,omitempty"`
+	TypingTicket  string `json:"typing_ticket,omitempty"`
+}
+
+type NotifyResponse struct {
+	Ret    int    `json:"ret,omitempty"`
+	ErrMsg string `json:"errmsg,omitempty"`
+}
+
 const (
 	UploadMediaTypeImage = 1
 	UploadMediaTypeVideo = 2
 	UploadMediaTypeFile  = 3
 	UploadMediaTypeVoice = 4
+
+	TypingStatusTyping = 1
+	TypingStatusCancel = 2
 )
 
 func (c *Client) FetchQRCode(ctx context.Context, baseURL string) (QRCodeResponse, error) {
@@ -208,6 +272,72 @@ func (c *Client) SendTextMessage(ctx context.Context, baseURL, token, toUserID, 
 	return nil
 }
 
+func (c *Client) GetConfig(ctx context.Context, baseURL, token, ilinkUserID, contextToken string) (GetConfigResponse, error) {
+	body := map[string]any{
+		"ilink_user_id": ilinkUserID,
+		"base_info": map[string]any{
+			"channel_version": c.channelVersion,
+		},
+	}
+	if strings.TrimSpace(contextToken) != "" {
+		body["context_token"] = contextToken
+	}
+	var out GetConfigResponse
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/getconfig", token, body, &out); err != nil {
+		return GetConfigResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) SendTyping(ctx context.Context, baseURL, token, ilinkUserID, typingTicket string, status int) error {
+	body := map[string]any{
+		"ilink_user_id":  ilinkUserID,
+		"typing_ticket":  typingTicket,
+		"status":         status,
+		"base_info": map[string]any{
+			"channel_version": c.channelVersion,
+		},
+	}
+	var out NotifyResponse
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/sendtyping", token, body, &out); err != nil {
+		return err
+	}
+	if out.Ret != 0 {
+		errText := out.ErrMsg
+		if strings.TrimSpace(errText) == "" {
+			errText = "sendtyping returned non-zero status"
+		}
+		return fmt.Errorf("%s (ret=%d)", errText, out.Ret)
+	}
+	return nil
+}
+
+func (c *Client) NotifyStart(ctx context.Context, baseURL, token string) (NotifyResponse, error) {
+	body := map[string]any{
+		"base_info": map[string]any{
+			"channel_version": c.channelVersion,
+		},
+	}
+	var out NotifyResponse
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/msg/notifystart", token, body, &out); err != nil {
+		return NotifyResponse{}, err
+	}
+	return out, nil
+}
+
+func (c *Client) NotifyStop(ctx context.Context, baseURL, token string) (NotifyResponse, error) {
+	body := map[string]any{
+		"base_info": map[string]any{
+			"channel_version": c.channelVersion,
+		},
+	}
+	var out NotifyResponse
+	if err := c.postJSON(ctx, strings.TrimRight(baseURL, "/")+"/ilink/bot/msg/notifystop", token, body, &out); err != nil {
+		return NotifyResponse{}, err
+	}
+	return out, nil
+}
+
 func (c *Client) postJSON(ctx context.Context, endpoint, token string, body any, out any) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -251,6 +381,63 @@ func (c *Client) doJSON(req *http.Request, token string, payload []byte, out any
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
+}
+
+func ExtractBodyText(msg WeixinMessage) string {
+	for _, item := range msg.ItemList {
+		switch item.Type {
+		case MessageItemTypeText:
+			if item.TextItem != nil {
+				return item.TextItem.Text
+			}
+		case MessageItemTypeVoice:
+			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
+				return item.VoiceItem.Text
+			}
+		case MessageItemTypeImage:
+			return "[image]"
+		case MessageItemTypeFile:
+			if item.FileItem != nil && item.FileItem.FileName != "" {
+				return "[file] " + item.FileItem.FileName
+			}
+			return "[file]"
+		case MessageItemTypeVideo:
+			return "[video]"
+		case MessageItemTypeToolCallStart:
+			if item.ToolCallStartItem != nil {
+				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
+			}
+			return "[tool_call_start]"
+		case MessageItemTypeToolCallResult:
+			if item.ToolCallResultItem != nil {
+				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
+			}
+			return "[tool_call_result]"
+		}
+	}
+	return ""
+}
+
+func DetectEventType(msg WeixinMessage) string {
+	for _, item := range msg.ItemList {
+		switch item.Type {
+		case MessageItemTypeText:
+			return "text"
+		case MessageItemTypeImage:
+			return "image"
+		case MessageItemTypeVoice:
+			return "voice"
+		case MessageItemTypeFile:
+			return "file"
+		case MessageItemTypeVideo:
+			return "video"
+		case MessageItemTypeToolCallStart:
+			return "tool_call_start"
+		case MessageItemTypeToolCallResult:
+			return "tool_call_result"
+		}
+	}
+	return "unknown"
 }
 
 func randomWechatUIN() string {

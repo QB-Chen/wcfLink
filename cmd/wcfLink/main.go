@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/lich0821/wcfLink/internal/app"
-	"github.com/lich0821/wcfLink/internal/config"
-	coreversion "github.com/lich0821/wcfLink/version"
+	"github.com/QB-Chen/wcfLink/internal/app"
+	"github.com/QB-Chen/wcfLink/internal/config"
+	coreversion "github.com/QB-Chen/wcfLink/version"
 )
 
 func main() {

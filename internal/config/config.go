@@ -30,6 +30,15 @@ type Config struct {
 	LogLevelText   string
 	OpenBrowser    bool
 	WebhookURL     string
+
+	WeComCorpID         string
+	WeComCorpSecret     string
+	WeComAgentID        int
+	WeComCallbackToken  string
+	WeComCallbackAESKey string
+	WeComAPIBaseURL     string
+	WeComAutoReply      bool
+	WeComWebhookURL     string
 }
 
 func Load() Config {
@@ -51,6 +60,15 @@ func Load() Config {
 		LogLevelText:   envOrDefault("WCFLINK_LOG_LEVEL", "INFO"),
 		OpenBrowser:    envBoolOrDefault("WCFLINK_OPEN_BROWSER", false),
 		WebhookURL:     envOrDefault("WCFLINK_WEBHOOK_URL", fileSettings.WebhookURL),
+
+		WeComCorpID:         envOrDefault("WCFLINK_WECOM_CORP_ID", ""),
+		WeComCorpSecret:     envOrDefault("WCFLINK_WECOM_CORP_SECRET", ""),
+		WeComAgentID:        envIntOrDefault("WCFLINK_WECOM_AGENT_ID", 0),
+		WeComCallbackToken:  envOrDefault("WCFLINK_WECOM_CALLBACK_TOKEN", ""),
+		WeComCallbackAESKey: envOrDefault("WCFLINK_WECOM_CALLBACK_AES_KEY", ""),
+		WeComAPIBaseURL:     envOrDefault("WCFLINK_WECOM_API_BASE_URL", ""),
+		WeComAutoReply:      envBoolOrDefault("WCFLINK_WECOM_AUTO_REPLY", false),
+		WeComWebhookURL:     envOrDefault("WCFLINK_WECOM_WEBHOOK_URL", ""),
 	}
 }
 
@@ -101,6 +119,15 @@ func envOrDefault(key, fallback string) string {
 func envDurationOrDefault(key string, fallback time.Duration) time.Duration {
 	if value := os.Getenv(key); value != "" {
 		if parsed, err := time.ParseDuration(value); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func envIntOrDefault(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
 			return parsed
 		}
 	}

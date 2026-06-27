@@ -11,8 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lich0821/wcfLink/internal/model"
-	coreversion "github.com/lich0821/wcfLink/version"
+	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
+	coreversion "github.com/QB-Chen/wcfLink/version"
 )
 
 type Service interface {
@@ -26,15 +28,42 @@ type Service interface {
 	UpdateSettings(ctx context.Context, settings model.Settings) (model.Settings, error)
 	SendText(ctx context.Context, accountID, toUserID, text, contextToken string) error
 	SendMedia(ctx context.Context, accountID, toUserID, mediaType, filePath, text, contextToken string) error
+	GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (ilink.GetConfigResponse, error)
+	SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error
+	NotifyStart(ctx context.Context, accountID string) (ilink.NotifyResponse, error)
+	NotifyStop(ctx context.Context, accountID string) (ilink.NotifyResponse, error)
+}
+
+type WeComService interface {
+	SendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error
+	ListAccounts(ctx context.Context) ([]model.WeComAccount, error)
+	ListEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error)
+	AddAccount(ctx context.Context, account model.WeComAccount) error
+	RemoveAccount(ctx context.Context, corpID string, agentID int) error
+	GetUser(ctx context.Context, corpID, corpSecret, userID string) (wecom.UserInfo, error)
+	ListDepartmentUsers(ctx context.Context, corpID, corpSecret string, departmentID int) ([]wecom.UserInfo, error)
+	ListDepartments(ctx context.Context, corpID, corpSecret string) ([]wecom.DepartmentInfo, error)
+	GetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (wecom.GroupChatInfo, error)
+}
+
+type WeComCallbackHandler interface {
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
 }
 
 type Server struct {
-	logger  *slog.Logger
-	service Service
+	logger       *slog.Logger
+	service      Service
+	wecomSvc     WeComService
+	wecomHandler WeComCallbackHandler
 }
 
-func NewServer(service Service, logger *slog.Logger) *Server {
-	return &Server{logger: logger, service: service}
+func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler) *Server {
+	return &Server{
+		logger:       logger,
+		service:      service,
+		wecomSvc:     wecomSvc,
+		wecomHandler: wecomHandler,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -52,6 +81,25 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/settings", s.handleUpdateSettings)
 	mux.HandleFunc("POST /api/messages/send-text", s.handleSendText)
 	mux.HandleFunc("POST /api/messages/send-media", s.handleSendMedia)
+	mux.HandleFunc("POST /api/bot/getconfig", s.handleGetConfig)
+	mux.HandleFunc("POST /api/bot/sendtyping", s.handleSendTyping)
+	mux.HandleFunc("POST /api/bot/notifystart", s.handleNotifyStart)
+	mux.HandleFunc("POST /api/bot/notifystop", s.handleNotifyStop)
+
+	mux.HandleFunc("GET /api/wecom/accounts", s.handleWeComAccounts)
+	mux.HandleFunc("POST /api/wecom/accounts", s.handleWeComAddAccount)
+	mux.HandleFunc("DELETE /api/wecom/accounts", s.handleWeComRemoveAccount)
+	mux.HandleFunc("GET /api/wecom/events", s.handleWeComEvents)
+	mux.HandleFunc("POST /api/wecom/messages/send-text", s.handleWeComSendText)
+	mux.HandleFunc("GET /api/wecom/contacts/user", s.handleWeComGetUser)
+	mux.HandleFunc("GET /api/wecom/contacts/users", s.handleWeComListUsers)
+	mux.HandleFunc("GET /api/wecom/contacts/departments", s.handleWeComListDepartments)
+	mux.HandleFunc("GET /api/wecom/contacts/groupchat", s.handleWeComGetGroupChat)
+	if s.wecomHandler != nil {
+		mux.HandleFunc("GET /api/wecom/callback", s.handleWeComCallback)
+		mux.HandleFunc("POST /api/wecom/callback", s.handleWeComCallback)
+	}
+
 	return withJSONContentType(mux)
 }
 
@@ -251,6 +299,93 @@ func (s *Server) handleSendMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AccountID    string `json:"account_id"`
+		ILinkUserID  string `json:"ilink_user_id"`
+		ContextToken string `json:"context_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.AccountID) == "" || strings.TrimSpace(req.ILinkUserID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "account_id and ilink_user_id are required"})
+		return
+	}
+	resp, err := s.service.GetConfig(r.Context(), req.AccountID, req.ILinkUserID, req.ContextToken)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleSendTyping(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AccountID    string `json:"account_id"`
+		ILinkUserID  string `json:"ilink_user_id"`
+		TypingTicket string `json:"typing_ticket"`
+		Status       int    `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.AccountID) == "" || strings.TrimSpace(req.ILinkUserID) == "" || strings.TrimSpace(req.TypingTicket) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "account_id, ilink_user_id and typing_ticket are required"})
+		return
+	}
+	if req.Status == 0 {
+		req.Status = 1
+	}
+	if err := s.service.SendTyping(r.Context(), req.AccountID, req.ILinkUserID, req.TypingTicket, req.Status); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleNotifyStart(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AccountID string `json:"account_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.AccountID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "account_id is required"})
+		return
+	}
+	resp, err := s.service.NotifyStart(r.Context(), req.AccountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleNotifyStop(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AccountID string `json:"account_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		return
+	}
+	if strings.TrimSpace(req.AccountID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "account_id is required"})
+		return
+	}
+	resp, err := s.service.NotifyStop(r.Context(), req.AccountID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func isContextTokenMissingError(err error) bool {

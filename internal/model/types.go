@@ -46,6 +46,7 @@ type Event struct {
 	EventType    string    `json:"event_type"`
 	FromUserID   string    `json:"from_user_id,omitempty"`
 	ToUserID     string    `json:"to_user_id,omitempty"`
+	GroupID      string    `json:"group_id,omitempty"`
 	MessageID    int64     `json:"message_id,omitempty"`
 	ContextToken string    `json:"context_token,omitempty"`
 	BodyText     string    `json:"body_text,omitempty"`
@@ -68,4 +69,35 @@ type LogEntry struct {
 type Settings struct {
 	ListenAddr string `json:"listen_addr"`
 	WebhookURL string `json:"webhook_url"`
+}
+
+type WeComAccount struct {
+	ID             int64      `json:"id"`
+	CorpID         string     `json:"corp_id"`
+	CorpSecret     string     `json:"-"`
+	AgentID        int        `json:"agent_id"`
+	CallbackToken  string     `json:"-"`
+	CallbackAESKey string     `json:"-"`
+	Enabled        bool       `json:"enabled"`
+	AutoReply      bool       `json:"auto_reply"`
+	WebhookURL     string     `json:"webhook_url,omitempty"`
+	LastError      string     `json:"last_error,omitempty"`
+	LastInboundAt  *time.Time `json:"last_inbound_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+type WeComEvent struct {
+	ID           int64     `json:"id"`
+	CorpID       string    `json:"corp_id"`
+	AgentID      int       `json:"agent_id"`
+	Direction    string    `json:"direction"`
+	EventType    string    `json:"event_type"`
+	FromUser     string    `json:"from_user,omitempty"`
+	ToUser       string    `json:"to_user,omitempty"`
+	MsgID        int64     `json:"msg_id,omitempty"`
+	BodyText     string    `json:"body_text,omitempty"`
+	MediaID      string    `json:"media_id,omitempty"`
+	RawJSON      string    `json:"raw_json"`
+	CreatedAt    time.Time `json:"created_at"`
 }
