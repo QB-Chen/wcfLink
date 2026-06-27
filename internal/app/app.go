@@ -14,9 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/QB-Chen/wcfLink/internal/agent"
 	"github.com/QB-Chen/wcfLink/internal/config"
 	"github.com/QB-Chen/wcfLink/internal/httpapi"
 	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/llm"
 	"github.com/QB-Chen/wcfLink/internal/model"
 	"github.com/QB-Chen/wcfLink/internal/store"
 	"github.com/QB-Chen/wcfLink/internal/wecom"
@@ -34,6 +36,7 @@ type App struct {
 	svc          *service
 	wecomSvc     *wecomService
 	wecomHandler *wecom.CallbackHandler
+	agentInst    *agent.Agent
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -68,14 +71,58 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		}
 	}
 
-	api := httpapi.NewServer(&service{
-		cfg:     cfg,
-		logger:  logger,
-		store:   st,
-		client:  client,
-		pollers: pollers,
-		runtime: runtime,
-	}, logger, wecomSvc, wecomHandler)
+	var agentInst *agent.Agent
+	if cfg.AgentEnabled && cfg.LLMAPIKey != "" {
+		llmClient := llm.NewClient(cfg.LLMBaseURL, cfg.LLMAPIKey, cfg.LLMModel)
+		convMgr := agent.NewConversationManager(st.DB())
+		if err := convMgr.Migrate(ctx); err != nil {
+			return nil, fmt.Errorf("migrate conversation tables: %w", err)
+		}
+
+		sender := agent.NewMultiChannelSender(
+			svc,
+			wecomSvc,
+			func(session agent.SessionKey) (agent.ILinkSessionInfo, error) {
+				accounts, err := st.ListAccounts(ctx)
+				if err != nil || len(accounts) == 0 {
+					return agent.ILinkSessionInfo{}, fmt.Errorf("no ilink accounts available")
+				}
+				account := accounts[0]
+				peerCtx, err := st.GetPeerContext(ctx, account.AccountID, session.UserID)
+				if err != nil {
+					return agent.ILinkSessionInfo{}, fmt.Errorf("no context token for user %s", session.UserID)
+				}
+				return agent.ILinkSessionInfo{
+					AccountID:    account.AccountID,
+					ContextToken: peerCtx.ContextToken,
+				}, nil
+			},
+			func(session agent.SessionKey) (agent.WeComSessionInfo, error) {
+				wecomAccounts, err := st.ListWeComAccounts(ctx)
+				if err != nil || len(wecomAccounts) == 0 {
+					return agent.WeComSessionInfo{}, fmt.Errorf("no wecom accounts available")
+				}
+				acct := wecomAccounts[0]
+				return agent.WeComSessionInfo{
+					CorpID:     acct.CorpID,
+					CorpSecret: acct.CorpSecret,
+					AgentID:    acct.AgentID,
+				}, nil
+			},
+		)
+
+		agentInst = agent.New(llmClient, convMgr, sender, logger, agent.AgentConfig{
+			DefaultMode:   cfg.AgentDefaultMode,
+			MaxIterations: cfg.AgentMaxIterations,
+			SessionTTL:    cfg.AgentSessionTTL,
+		})
+		logger.Info("agent enabled", "mode", cfg.AgentDefaultMode, "model", cfg.LLMModel)
+	}
+
+	svc.agent = agentInst
+	wecomSvc.agentInst = agentInst
+
+	api := httpapi.NewServer(svc, logger, wecomSvc, wecomHandler, agentInst)
 
 	return &App{
 		cfg:          cfg,
@@ -87,6 +134,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		svc:          svc,
 		wecomSvc:     wecomSvc,
 		wecomHandler: wecomHandler,
+		agentInst:    agentInst,
 		server: &http.Server{
 			Addr:              cfg.ListenAddr,
 			Handler:           api.Handler(),
@@ -279,6 +327,7 @@ type service struct {
 	client  *ilink.Client
 	pollers *worker.PollerManager
 	runtime *runtimeState
+	agent   *agent.Agent
 }
 
 func (s *service) StartLogin(ctx context.Context, baseURL string) (model.LoginSession, error) {
@@ -529,6 +578,24 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 	})
 	if err != nil {
 		return err
+	}
+
+	if s.agent != nil {
+		bodyText := ilink.ExtractBodyText(msg)
+		if bodyText != "" {
+			session := agent.SessionKey{
+				ChannelType: "ilink",
+				UserID:      msg.FromUserID,
+				GroupID:     msg.GroupID,
+			}
+			go func() {
+				if err := s.agent.HandleMessage(context.Background(), session, bodyText); err != nil {
+					s.logger.Error("agent handle ilink message failed", "err", err)
+				}
+			}()
+			_ = s.store.AddLog(ctx, "INFO", "inbound message routed to agent", "agent", string(payload))
+			return nil
+		}
 	}
 
 	settings := s.runtime.Settings()

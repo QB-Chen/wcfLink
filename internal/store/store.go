@@ -39,6 +39,10 @@ func New(ctx context.Context, dbPath string) (*Store, error) {
 	return s, nil
 }
 
+func (s *Store) DB() *sql.DB {
+	return s.db
+}
+
 func (s *Store) Close() error {
 	if s == nil || s.db == nil {
 		return nil
