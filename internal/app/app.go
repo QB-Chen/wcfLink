@@ -19,18 +19,21 @@ import (
 	"github.com/lich0821/wcfLink/internal/ilink"
 	"github.com/lich0821/wcfLink/internal/model"
 	"github.com/lich0821/wcfLink/internal/store"
+	"github.com/lich0821/wcfLink/internal/wecom"
 	"github.com/lich0821/wcfLink/internal/worker"
 )
 
 type App struct {
-	cfg     config.Config
-	logger  *slog.Logger
-	store   *store.Store
-	client  *ilink.Client
-	pollers *worker.PollerManager
-	server  *http.Server
-	runtime *runtimeState
-	svc     *service
+	cfg          config.Config
+	logger       *slog.Logger
+	store        *store.Store
+	client       *ilink.Client
+	pollers      *worker.PollerManager
+	server       *http.Server
+	runtime      *runtimeState
+	svc          *service
+	wecomSvc     *wecomService
+	wecomHandler *wecom.CallbackHandler
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
@@ -49,6 +52,22 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	}
 	pollers := worker.NewPollerManager(st, client, logger, svc.HandleInboundMessage)
 	svc.pollers = pollers
+
+	wecomClient := wecom.NewClient(cfg.WeComAPIBaseURL)
+	wecomSvc := newWeComService(wecomServiceConfig{
+		WeComWebhookURL: cfg.WeComWebhookURL,
+	}, logger, st, wecomClient)
+
+	var wecomHandler *wecom.CallbackHandler
+	wecomAccounts := buildWeComAccounts(cfg, ctx, st)
+	if len(wecomAccounts) > 0 {
+		var err2 error
+		wecomHandler, err2 = wecom.NewCallbackHandler(wecomAccounts, logger, wecomSvc.HandleInbound)
+		if err2 != nil {
+			return nil, fmt.Errorf("init wecom callback handler: %w", err2)
+		}
+	}
+
 	api := httpapi.NewServer(&service{
 		cfg:     cfg,
 		logger:  logger,
@@ -56,16 +75,18 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 		client:  client,
 		pollers: pollers,
 		runtime: runtime,
-	}, logger)
+	}, logger, wecomSvc, wecomHandler)
 
 	return &App{
-		cfg:     cfg,
-		logger:  logger,
-		store:   st,
-		client:  client,
-		pollers: pollers,
-		runtime: runtime,
-		svc:     svc,
+		cfg:          cfg,
+		logger:       logger,
+		store:        st,
+		client:       client,
+		pollers:      pollers,
+		runtime:      runtime,
+		svc:          svc,
+		wecomSvc:     wecomSvc,
+		wecomHandler: wecomHandler,
 		server: &http.Server{
 			Addr:              cfg.ListenAddr,
 			Handler:           api.Handler(),
@@ -148,6 +169,75 @@ func (a *App) SendMedia(ctx context.Context, accountID, toUserID, mediaType, fil
 
 func (a *App) LogoutAccount(ctx context.Context, accountID string) error {
 	return a.svc.LogoutAccount(ctx, accountID)
+}
+
+func (a *App) WeComSendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error {
+	return a.wecomSvc.SendText(ctx, corpID, corpSecret, agentID, toUser, text)
+}
+
+func (a *App) WeComSendMedia(ctx context.Context, corpID, corpSecret string, agentID int, toUser, mediaType, filePath string, fileData []byte) error {
+	return a.wecomSvc.SendMedia(ctx, corpID, corpSecret, agentID, toUser, mediaType, filePath, fileData)
+}
+
+func (a *App) WeComListAccounts(ctx context.Context) ([]model.WeComAccount, error) {
+	return a.wecomSvc.ListAccounts(ctx)
+}
+
+func (a *App) WeComListEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error) {
+	return a.wecomSvc.ListEvents(ctx, afterID, limit)
+}
+
+func (a *App) WeComAddAccount(ctx context.Context, account model.WeComAccount) error {
+	return a.wecomSvc.AddAccount(ctx, account)
+}
+
+func (a *App) WeComRemoveAccount(ctx context.Context, corpID string, agentID int) error {
+	return a.wecomSvc.RemoveAccount(ctx, corpID, agentID)
+}
+
+func buildWeComAccounts(cfg config.Config, ctx context.Context, st *store.Store) []wecom.AccountConfig {
+	var accounts []wecom.AccountConfig
+
+	if cfg.WeComCorpID != "" && cfg.WeComCorpSecret != "" {
+		accounts = append(accounts, wecom.AccountConfig{
+			CorpID:         cfg.WeComCorpID,
+			CorpSecret:     cfg.WeComCorpSecret,
+			AgentID:        cfg.WeComAgentID,
+			CallbackToken:  cfg.WeComCallbackToken,
+			CallbackAESKey: cfg.WeComCallbackAESKey,
+		})
+		_ = st.UpsertWeComAccount(ctx, model.WeComAccount{
+			CorpID:         cfg.WeComCorpID,
+			CorpSecret:     cfg.WeComCorpSecret,
+			AgentID:        cfg.WeComAgentID,
+			CallbackToken:  cfg.WeComCallbackToken,
+			CallbackAESKey: cfg.WeComCallbackAESKey,
+			Enabled:        true,
+			AutoReply:      cfg.WeComAutoReply,
+			WebhookURL:     cfg.WeComWebhookURL,
+		})
+	}
+
+	stored, err := st.ListWeComAccounts(ctx)
+	if err == nil {
+		for _, s := range stored {
+			if !s.Enabled {
+				continue
+			}
+			if s.CorpID == cfg.WeComCorpID && s.AgentID == cfg.WeComAgentID {
+				continue
+			}
+			accounts = append(accounts, wecom.AccountConfig{
+				CorpID:         s.CorpID,
+				CorpSecret:     s.CorpSecret,
+				AgentID:        s.AgentID,
+				CallbackToken:  s.CallbackToken,
+				CallbackAESKey: s.CallbackAESKey,
+			})
+		}
+	}
+
+	return accounts
 }
 
 type service struct {

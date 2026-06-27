@@ -18,6 +18,8 @@ type Event = model.Event
 type LogEntry = model.LogEntry
 type Settings = model.Settings
 type VersionInfo = coreversion.Info
+type WeComAccount = model.WeComAccount
+type WeComEvent = model.WeComEvent
 
 type Engine struct {
 	app *internalapp.App
@@ -97,4 +99,28 @@ func (e *Engine) SendMedia(ctx context.Context, accountID, toUserID, mediaType, 
 
 func (e *Engine) LogoutAccount(ctx context.Context, accountID string) error {
 	return e.app.LogoutAccount(ctx, accountID)
+}
+
+func (e *Engine) WeComSendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error {
+	return e.app.WeComSendText(ctx, corpID, corpSecret, agentID, toUser, text)
+}
+
+func (e *Engine) WeComSendMedia(ctx context.Context, corpID, corpSecret string, agentID int, toUser, mediaType, filePath string, fileData []byte) error {
+	return e.app.WeComSendMedia(ctx, corpID, corpSecret, agentID, toUser, mediaType, filePath, fileData)
+}
+
+func (e *Engine) WeComListAccounts(ctx context.Context) ([]WeComAccount, error) {
+	return e.app.WeComListAccounts(ctx)
+}
+
+func (e *Engine) WeComListEvents(ctx context.Context, afterID int64, limit int) ([]WeComEvent, error) {
+	return e.app.WeComListEvents(ctx, afterID, limit)
+}
+
+func (e *Engine) WeComAddAccount(ctx context.Context, account WeComAccount) error {
+	return e.app.WeComAddAccount(ctx, account)
+}
+
+func (e *Engine) WeComRemoveAccount(ctx context.Context, corpID string, agentID int) error {
+	return e.app.WeComRemoveAccount(ctx, corpID, agentID)
 }

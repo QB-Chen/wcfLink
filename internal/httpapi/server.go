@@ -28,13 +28,32 @@ type Service interface {
 	SendMedia(ctx context.Context, accountID, toUserID, mediaType, filePath, text, contextToken string) error
 }
 
-type Server struct {
-	logger  *slog.Logger
-	service Service
+type WeComService interface {
+	SendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error
+	ListAccounts(ctx context.Context) ([]model.WeComAccount, error)
+	ListEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error)
+	AddAccount(ctx context.Context, account model.WeComAccount) error
+	RemoveAccount(ctx context.Context, corpID string, agentID int) error
 }
 
-func NewServer(service Service, logger *slog.Logger) *Server {
-	return &Server{logger: logger, service: service}
+type WeComCallbackHandler interface {
+	ServeHTTP(w http.ResponseWriter, r *http.Request)
+}
+
+type Server struct {
+	logger       *slog.Logger
+	service      Service
+	wecomSvc     WeComService
+	wecomHandler WeComCallbackHandler
+}
+
+func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler) *Server {
+	return &Server{
+		logger:       logger,
+		service:      service,
+		wecomSvc:     wecomSvc,
+		wecomHandler: wecomHandler,
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -52,6 +71,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/settings", s.handleUpdateSettings)
 	mux.HandleFunc("POST /api/messages/send-text", s.handleSendText)
 	mux.HandleFunc("POST /api/messages/send-media", s.handleSendMedia)
+
+	mux.HandleFunc("GET /api/wecom/accounts", s.handleWeComAccounts)
+	mux.HandleFunc("POST /api/wecom/accounts", s.handleWeComAddAccount)
+	mux.HandleFunc("DELETE /api/wecom/accounts", s.handleWeComRemoveAccount)
+	mux.HandleFunc("GET /api/wecom/events", s.handleWeComEvents)
+	mux.HandleFunc("POST /api/wecom/messages/send-text", s.handleWeComSendText)
+	if s.wecomHandler != nil {
+		mux.HandleFunc("GET /api/wecom/callback", s.handleWeComCallback)
+		mux.HandleFunc("POST /api/wecom/callback", s.handleWeComCallback)
+	}
+
 	return withJSONContentType(mux)
 }
 

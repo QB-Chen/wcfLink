@@ -433,6 +433,39 @@ func (s *Store) migrate(ctx context.Context) error {
 			meta_json TEXT NOT NULL DEFAULT '',
 			created_at TIMESTAMP NOT NULL
 		);`,
+		`CREATE TABLE IF NOT EXISTS wecom_accounts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			corp_id TEXT NOT NULL,
+			corp_secret TEXT NOT NULL DEFAULT '',
+			agent_id INTEGER NOT NULL DEFAULT 0,
+			callback_token TEXT NOT NULL DEFAULT '',
+			callback_aes_key TEXT NOT NULL DEFAULT '',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			auto_reply INTEGER NOT NULL DEFAULT 0,
+			webhook_url TEXT NOT NULL DEFAULT '',
+			last_error TEXT NOT NULL DEFAULT '',
+			last_inbound_at TIMESTAMP,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL,
+			UNIQUE(corp_id, agent_id)
+		);`,
+		`CREATE TABLE IF NOT EXISTS wecom_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			corp_id TEXT NOT NULL,
+			agent_id INTEGER NOT NULL DEFAULT 0,
+			direction TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			from_user TEXT NOT NULL DEFAULT '',
+			to_user TEXT NOT NULL DEFAULT '',
+			msg_id INTEGER NOT NULL DEFAULT 0,
+			body_text TEXT NOT NULL DEFAULT '',
+			media_id TEXT NOT NULL DEFAULT '',
+			raw_json TEXT NOT NULL,
+			created_at TIMESTAMP NOT NULL
+		);`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_wecom_events_msg_inbound
+		 ON wecom_events(corp_id, agent_id, direction, msg_id)
+		 WHERE direction = 'inbound' AND msg_id != 0;`,
 	}
 
 	for _, stmt := range stmts {
@@ -512,6 +545,157 @@ func stringsNotEmpty(values ...string) bool {
 		}
 	}
 	return true
+}
+
+func (s *Store) UpsertWeComAccount(ctx context.Context, account model.WeComAccount) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO wecom_accounts (
+  corp_id, corp_secret, agent_id, callback_token, callback_aes_key,
+  enabled, auto_reply, webhook_url, last_error, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+ON CONFLICT(corp_id, agent_id) DO UPDATE SET
+  corp_secret = excluded.corp_secret,
+  callback_token = excluded.callback_token,
+  callback_aes_key = excluded.callback_aes_key,
+  enabled = excluded.enabled,
+  auto_reply = excluded.auto_reply,
+  webhook_url = excluded.webhook_url,
+  updated_at = excluded.updated_at`,
+		account.CorpID, account.CorpSecret, account.AgentID,
+		account.CallbackToken, account.CallbackAESKey,
+		boolToInt(account.Enabled), boolToInt(account.AutoReply),
+		account.WebhookURL, now, now,
+	)
+	return err
+}
+
+func (s *Store) ListWeComAccounts(ctx context.Context) ([]model.WeComAccount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, corp_id, corp_secret, agent_id, callback_token, callback_aes_key,
+       enabled, auto_reply, webhook_url, last_error, last_inbound_at, created_at, updated_at
+FROM wecom_accounts
+ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.WeComAccount
+	for rows.Next() {
+		var item model.WeComAccount
+		var enabled, autoReply int
+		var lastInboundAt sql.NullTime
+		if err := rows.Scan(
+			&item.ID, &item.CorpID, &item.CorpSecret, &item.AgentID,
+			&item.CallbackToken, &item.CallbackAESKey,
+			&enabled, &autoReply, &item.WebhookURL,
+			&item.LastError, &lastInboundAt, &item.CreatedAt, &item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Enabled = enabled == 1
+		item.AutoReply = autoReply == 1
+		if lastInboundAt.Valid {
+			item.LastInboundAt = &lastInboundAt.Time
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (s *Store) GetWeComAccount(ctx context.Context, corpID string, agentID int) (model.WeComAccount, error) {
+	row := s.db.QueryRowContext(ctx, `
+SELECT id, corp_id, corp_secret, agent_id, callback_token, callback_aes_key,
+       enabled, auto_reply, webhook_url, last_error, last_inbound_at, created_at, updated_at
+FROM wecom_accounts
+WHERE corp_id = ? AND agent_id = ?`, corpID, agentID)
+	var item model.WeComAccount
+	var enabled, autoReply int
+	var lastInboundAt sql.NullTime
+	err := row.Scan(
+		&item.ID, &item.CorpID, &item.CorpSecret, &item.AgentID,
+		&item.CallbackToken, &item.CallbackAESKey,
+		&enabled, &autoReply, &item.WebhookURL,
+		&item.LastError, &lastInboundAt, &item.CreatedAt, &item.UpdatedAt,
+	)
+	if err != nil {
+		return model.WeComAccount{}, err
+	}
+	item.Enabled = enabled == 1
+	item.AutoReply = autoReply == 1
+	if lastInboundAt.Valid {
+		item.LastInboundAt = &lastInboundAt.Time
+	}
+	return item, nil
+}
+
+func (s *Store) DeleteWeComAccount(ctx context.Context, corpID string, agentID int) error {
+	_, err := s.db.ExecContext(ctx, `
+DELETE FROM wecom_accounts WHERE corp_id = ? AND agent_id = ?`, corpID, agentID)
+	return err
+}
+
+func (s *Store) TouchWeComAccountInbound(ctx context.Context, corpID string, agentID int) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+UPDATE wecom_accounts SET last_inbound_at = ?, last_error = '', updated_at = ?
+WHERE corp_id = ? AND agent_id = ?`, now, now, corpID, agentID)
+	return err
+}
+
+func (s *Store) UpdateWeComAccountError(ctx context.Context, corpID string, agentID int, lastError string) error {
+	now := time.Now().UTC()
+	_, err := s.db.ExecContext(ctx, `
+UPDATE wecom_accounts SET last_error = ?, updated_at = ?
+WHERE corp_id = ? AND agent_id = ?`, lastError, now, corpID, agentID)
+	return err
+}
+
+func (s *Store) SaveWeComEvent(ctx context.Context, corpID string, agentID int, direction, eventType, fromUser, toUser string, msgID int64, bodyText, mediaID, rawJSON string) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO wecom_events (
+  corp_id, agent_id, direction, event_type, from_user, to_user, msg_id, body_text, media_id, raw_json, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		corpID, agentID, direction, eventType, fromUser, toUser, msgID, bodyText, mediaID, rawJSON, time.Now().UTC(),
+	)
+	return err
+}
+
+func (s *Store) ListWeComEvents(ctx context.Context, afterID int64, limit int) ([]model.WeComEvent, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, corp_id, agent_id, direction, event_type, from_user, to_user, msg_id, body_text, media_id, raw_json, created_at
+FROM wecom_events
+WHERE id > ?
+ORDER BY id ASC
+LIMIT ?`, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []model.WeComEvent
+	for rows.Next() {
+		var item model.WeComEvent
+		if err := rows.Scan(
+			&item.ID, &item.CorpID, &item.AgentID, &item.Direction, &item.EventType,
+			&item.FromUser, &item.ToUser, &item.MsgID, &item.BodyText, &item.MediaID, &item.RawJSON, &item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 var ErrNotFound = errors.New("not found")
