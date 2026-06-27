@@ -49,14 +49,11 @@ func (s *wecomService) HandleInbound(ctx context.Context, account wecom.AccountC
 	_ = s.store.TouchWeComAccountInbound(ctx, account.CorpID, account.AgentID)
 
 	webhookURL := s.cfg.WeComWebhookURL
-	if webhookURL == "" {
-		stored, err := s.store.GetWeComAccount(ctx, account.CorpID, account.AgentID)
-		if err == nil && stored.WebhookURL != "" {
-			webhookURL = stored.WebhookURL
-		}
+	stored, err := s.store.GetWeComAccount(ctx, account.CorpID, account.AgentID)
+	if err == nil && webhookURL == "" && stored.WebhookURL != "" {
+		webhookURL = stored.WebhookURL
 	}
 
-	stored, err := s.store.GetWeComAccount(ctx, account.CorpID, account.AgentID)
 	autoReply := err == nil && stored.AutoReply
 	if !autoReply {
 		if webhookURL != "" {

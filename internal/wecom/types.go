@@ -1,7 +1,5 @@
 package wecom
 
-import "time"
-
 type AccountConfig struct {
 	CorpID         string `json:"corp_id"`
 	CorpSecret     string `json:"-"`
@@ -78,18 +76,4 @@ type InboundMessage struct {
 	EventKey     string
 }
 
-type AutoReplyConfig struct {
-	Enabled    bool   `json:"enabled"`
-	WebhookURL string `json:"webhook_url"`
-}
 
-type WeComAccount struct {
-	ID             int64     `json:"id"`
-	CorpID         string    `json:"corp_id"`
-	AgentID        int       `json:"agent_id"`
-	Enabled        bool      `json:"enabled"`
-	LastError      string    `json:"last_error,omitempty"`
-	LastInboundAt  *time.Time `json:"last_inbound_at,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-}

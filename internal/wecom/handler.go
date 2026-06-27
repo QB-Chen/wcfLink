@@ -7,14 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 )
 
 type InboundHandler func(ctx context.Context, account AccountConfig, msg InboundMessage)
 
 type CallbackHandler struct {
 	accounts []AccountConfig
-	aesKeys  map[string][]byte // corpID -> aesKey
+	aesKeys  map[string][]byte // "corpID:agentID" -> aesKey
 	logger   *slog.Logger
 	onMsg    InboundHandler
 }
@@ -27,9 +26,9 @@ func NewCallbackHandler(accounts []AccountConfig, logger *slog.Logger, onMsg Inb
 		}
 		key, err := DecodeAESKey(acc.CallbackAESKey)
 		if err != nil {
-			return nil, fmt.Errorf("decode AES key for corp %s: %w", acc.CorpID, err)
+			return nil, fmt.Errorf("decode AES key for corp %s agent %d: %w", acc.CorpID, acc.AgentID, err)
 		}
-		aesKeys[acc.CorpID] = key
+		aesKeys[aesKeyID(acc.CorpID, acc.AgentID)] = key
 	}
 	return &CallbackHandler{
 		accounts: accounts,
@@ -130,8 +129,7 @@ func (h *CallbackHandler) handleMessage(w http.ResponseWriter, r *http.Request, 
 	)
 
 	if h.onMsg != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+		ctx := context.Background()
 		h.onMsg(ctx, *account, inbound)
 	}
 }
@@ -142,12 +140,16 @@ func (h *CallbackHandler) matchAccount(msgSignature, timestamp, nonce, encrypt s
 			continue
 		}
 		if VerifySignature(acc.CallbackToken, timestamp, nonce, encrypt, msgSignature) {
-			if aesKey, ok := h.aesKeys[acc.CorpID]; ok {
+			if aesKey, ok := h.aesKeys[aesKeyID(acc.CorpID, acc.AgentID)]; ok {
 				return &h.accounts[i], aesKey
 			}
 		}
 	}
 	return nil, nil
+}
+
+func aesKeyID(corpID string, agentID int) string {
+	return fmt.Sprintf("%s:%d", corpID, agentID)
 }
 
 func truncate(s string, maxLen int) string {
