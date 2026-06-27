@@ -22,9 +22,12 @@ type MessageSender interface {
 }
 
 type AgentConfig struct {
-	DefaultMode   string
-	MaxIterations int
-	SessionTTL    time.Duration
+	DefaultMode    string
+	MaxIterations  int
+	SessionTTL     time.Duration
+	Temperature    *float64
+	MaxTokens      int
+	FetchMaxContent int
 }
 
 type Agent struct {
@@ -46,7 +49,7 @@ func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSend
 
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewWebSearchTool())
-	registry.Register(tools.NewURLFetchTool(0))
+	registry.Register(tools.NewURLFetchTool(cfg.FetchMaxContent))
 
 	return &Agent{
 		llmClient:    llmClient,
@@ -108,8 +111,10 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 		toolDefs := a.toolRegistry.Definitions(mode.AvailableTools)
 
 		req := llm.ChatRequest{
-			Messages: messages,
-			Tools:    toolDefs,
+			Messages:    messages,
+			Tools:       toolDefs,
+			Temperature: a.config.Temperature,
+			MaxTokens:   a.config.MaxTokens,
 		}
 
 		a.logger.Debug("agent calling llm",
@@ -250,8 +255,11 @@ func parseCommand(text string) string {
 		return ""
 	}
 	cmd := strings.TrimPrefix(text, "/")
-	cmd = strings.Fields(cmd)[0]
-	return strings.ToLower(cmd)
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.ToLower(fields[0])
 }
 
 func helpText() string {

@@ -14,6 +14,19 @@ import (
 	"github.com/QB-Chen/wcfLink/internal/llm"
 )
 
+var (
+	reComment   = regexp.MustCompile(`<!--[\s\S]*?-->`)
+	reHTMLTag   = regexp.MustCompile(`<[^>]+>`)
+	reNumEntity = regexp.MustCompile(`&#(\d+);`)
+	reBlockTags = regexp.MustCompile(`(?i)</?(?:div|p|br|h[1-6]|li|tr|td|th|blockquote|pre|article|section)[^>]*>`)
+	reScript    = regexp.MustCompile(`(?is)<script[^>]*>.*?</script>`)
+	reStyle     = regexp.MustCompile(`(?is)<style[^>]*>.*?</style>`)
+	reNoscript  = regexp.MustCompile(`(?is)<noscript[^>]*>.*?</noscript>`)
+	reNav       = regexp.MustCompile(`(?is)<nav[^>]*>.*?</nav>`)
+	reFooter    = regexp.MustCompile(`(?is)<footer[^>]*>.*?</footer>`)
+	reHeader    = regexp.MustCompile(`(?is)<header[^>]*>.*?</header>`)
+)
+
 type URLFetchTool struct {
 	httpClient       *http.Client
 	maxContentLength int
@@ -112,22 +125,16 @@ func (t *URLFetchTool) Execute(ctx context.Context, arguments string) (string, e
 }
 
 func htmlToText(html string) string {
-	html = removeTag(html, "script")
-	html = removeTag(html, "style")
-	html = removeTag(html, "noscript")
-	html = removeTag(html, "nav")
-	html = removeTag(html, "footer")
-	html = removeTag(html, "header")
+	html = reScript.ReplaceAllString(html, "")
+	html = reStyle.ReplaceAllString(html, "")
+	html = reNoscript.ReplaceAllString(html, "")
+	html = reNav.ReplaceAllString(html, "")
+	html = reFooter.ReplaceAllString(html, "")
+	html = reHeader.ReplaceAllString(html, "")
 
-	html = regexp.MustCompile(`<!--[\s\S]*?-->`).ReplaceAllString(html, "")
-
-	blockTags := []string{"div", "p", "br", "h1", "h2", "h3", "h4", "h5", "h6",
-		"li", "tr", "td", "th", "blockquote", "pre", "article", "section"}
-	for _, tag := range blockTags {
-		html = regexp.MustCompile(`(?i)</?`+tag+`[^>]*>`).ReplaceAllString(html, "\n")
-	}
-
-	html = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(html, "")
+	html = reComment.ReplaceAllString(html, "")
+	html = reBlockTags.ReplaceAllString(html, "\n")
+	html = reHTMLTag.ReplaceAllString(html, "")
 
 	html = strings.ReplaceAll(html, "&amp;", "&")
 	html = strings.ReplaceAll(html, "&lt;", "<")
@@ -135,16 +142,9 @@ func htmlToText(html string) string {
 	html = strings.ReplaceAll(html, "&quot;", "\"")
 	html = strings.ReplaceAll(html, "&#39;", "'")
 	html = strings.ReplaceAll(html, "&nbsp;", " ")
-	html = regexp.MustCompile(`&#(\d+);`).ReplaceAllStringFunc(html, func(s string) string {
-		return " "
-	})
+	html = reNumEntity.ReplaceAllString(html, " ")
 
 	return html
-}
-
-func removeTag(html, tag string) string {
-	re := regexp.MustCompile(`(?is)<` + tag + `[^>]*>.*?</` + tag + `>`)
-	return re.ReplaceAllString(html, "")
 }
 
 func collapseWhitespace(s string) string {

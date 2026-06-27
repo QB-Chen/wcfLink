@@ -35,7 +35,6 @@ type Conversation struct {
 
 type ConversationManager struct {
 	db    *sql.DB
-	mu    sync.Mutex
 	locks sync.Map // map[string]*sync.Mutex for per-session locks
 }
 
@@ -289,9 +288,8 @@ func (m *ConversationManager) CleanExpired(ctx context.Context, ttl time.Duratio
 		args[i] = id
 	}
 
-	res, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM conversation_messages WHERE conversation_id IN (%s)`, placeholders), args...)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM conversation_messages WHERE conversation_id IN (%s)`, placeholders), args...); err != nil {
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx,
@@ -303,8 +301,7 @@ func (m *ConversationManager) CleanExpired(ctx context.Context, ttl time.Duratio
 		return 0, err
 	}
 
-	count, _ := res.RowsAffected()
-	return count + int64(len(ids)), tx.Commit()
+	return int64(len(ids)), tx.Commit()
 }
 
 func truncateString(s string, maxLen int) string {

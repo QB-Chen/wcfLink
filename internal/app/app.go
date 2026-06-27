@@ -111,10 +111,14 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			},
 		)
 
+		temp := cfg.LLMTemperature
 		agentInst = agent.New(llmClient, convMgr, sender, logger, agent.AgentConfig{
-			DefaultMode:   cfg.AgentDefaultMode,
-			MaxIterations: cfg.AgentMaxIterations,
-			SessionTTL:    cfg.AgentSessionTTL,
+			DefaultMode:    cfg.AgentDefaultMode,
+			MaxIterations:  cfg.AgentMaxIterations,
+			SessionTTL:     cfg.AgentSessionTTL,
+			Temperature:    &temp,
+			MaxTokens:      cfg.LLMMaxTokens,
+			FetchMaxContent: cfg.FetchMaxContent,
 		})
 		logger.Info("agent enabled", "mode", cfg.AgentDefaultMode, "model", cfg.LLMModel)
 	}
