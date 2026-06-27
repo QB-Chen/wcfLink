@@ -48,7 +48,6 @@
 
 - 多轮对话（基于 LLM Function Calling）
 - 会话管理（per-user / per-group 隔离，SQLite 持久化）
-- 滑动窗口上下文管理
 - 内置工具：网页搜索（DuckDuckGo/Bing 多引擎降级）、网页内容抓取
 - 四种专业模式：通用助手（Icemark）、市场分析（Market）、PRD 文档、原型设计（Prototype）
 - 命令系统：`/icemark`、`/market`、`/prd`、`/prototype`、`/reset`、`/mode`、`/help`
@@ -694,6 +693,53 @@ Agent 支持四种专业模式，用户通过命令切换：
 | `web_search` | 多引擎搜索（DuckDuckGo → Bing 降级），支持通用搜索和平台搜索（小红书/知乎/微博） |
 | `url_content_fetch` | 获取指定 URL 的网页内容，转换为纯文本格式 |
 
+### 架构
+
+```
+微信用户消息
+  │
+  ├── iLink 通道 (个人微信)
+  │   └── HandleInboundMessage → 提取文本 → Agent.HandleMessage(ctx, SessionKey, text)
+  │
+  └── WeCom 通道 (企业微信)
+      └── HandleInbound → 提取文本 → Agent.HandleMessage(ctx, SessionKey, text)
+                                            │
+                                            ▼
+                                    ┌─────────────────┐
+                                    │   Agent 主循环    │
+                                    │                   │
+                                    │  1. 加载会话历史    │
+                                    │  2. 拼接系统提示词  │
+                                    │  3. 调用 LLM       │
+                                    │  4. 判断 finish:    │
+                                    │     tool_calls →   │
+                                    │       执行工具 →    │
+                                    │       注入结果 →    │
+                                    │       继续循环      │
+                                    │     stop →         │
+                                    │       发送回复      │
+                                    └─────────────────┘
+                                            │
+                                            ▼
+                                    MultiChannelSender
+                                    ├── iLink: SendText(accountID, toUserID, text, contextToken)
+                                    └── WeCom: SendText(corpID, corpSecret, agentID, toUser, text)
+```
+
+Agent 启用后，入站文本消息自动路由到 Agent 处理，不再转发到 webhook。Agent 未启用时完全不影响现有 webhook 流程。
+
+### 数据库表
+
+Agent 使用与 wcfLink 相同的 SQLite 数据库，新增三张表：
+
+| 表 | 说明 |
+|---|------|
+| `conversations` | 会话元数据（channel_type + user_id + group_id 唯一索引） |
+| `conversation_messages` | 消息历史（role/content/tool_calls/tool_call_id） |
+| `tool_call_logs` | 工具调用日志（名称、参数、结果、耗时、错误） |
+
+表在 Agent 首次启动时自动创建（`ConversationManager.Migrate`）。
+
 ### Agent HTTP API
 
 查询 Agent 状态：
@@ -729,6 +775,29 @@ curl -s http://127.0.0.1:17890/api/agent/conversations/{conversation_id}
 
 ```bash
 curl -s -X DELETE http://127.0.0.1:17890/api/agent/conversations/{conversation_id}
+```
+
+### Agent 用户交互示例
+
+```
+用户: 帮我分析一下 AI 编程助手的市场趋势
+Bot:  好的，我来搜索一下最新的市场信息...
+      [调用 web_search: "AI 编程助手 市场趋势 2026"]
+      [调用 url_content_fetch: 获取详细报告内容]
+Bot:  ## AI 编程助手市场分析
+      ### 市场规模 ...
+      ### 主要玩家 ...
+      需要我深入分析某个方面吗？
+
+用户: /prd
+Bot:  已切换到 PRD 模式。我会帮你创建产品需求文档。
+      请告诉我：
+      - 目标用户是谁？
+      - 用户想要实现什么目标？
+      ...
+
+用户: /reset
+Bot:  会话已重置。
 ```
 
 ### Agent 环境变量
