@@ -14,13 +14,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lich0821/wcfLink/internal/config"
-	"github.com/lich0821/wcfLink/internal/httpapi"
-	"github.com/lich0821/wcfLink/internal/ilink"
-	"github.com/lich0821/wcfLink/internal/model"
-	"github.com/lich0821/wcfLink/internal/store"
-	"github.com/lich0821/wcfLink/internal/wecom"
-	"github.com/lich0821/wcfLink/internal/worker"
+	"github.com/QB-Chen/wcfLink/internal/config"
+	"github.com/QB-Chen/wcfLink/internal/httpapi"
+	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/store"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
+	"github.com/QB-Chen/wcfLink/internal/worker"
 )
 
 type App struct {

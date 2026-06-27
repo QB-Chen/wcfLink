@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lich0821/wcfLink/internal/ilink"
-	"github.com/lich0821/wcfLink/internal/model"
-	"github.com/lich0821/wcfLink/internal/wecom"
-	coreversion "github.com/lich0821/wcfLink/version"
+	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
+	coreversion "github.com/QB-Chen/wcfLink/version"
 )
 
 type Service interface {

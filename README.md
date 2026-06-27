@@ -7,7 +7,7 @@
 - 作为 Go 库嵌入到你自己的程序里
 - 作为一个本地 HTTP 服务独立运行
 
-桌面应用已经拆分到独立项目 [wcfLink-GUI](https://github.com/lich0821/wcfLink-GUI)。
+桌面应用已经拆分到独立项目 [wcfLink-GUI](https://github.com/QB-Chen/wcfLink-GUI)。
 
 ## 当前支持
 
@@ -41,6 +41,7 @@
 - 媒体上传与发送（图片、语音、视频、文件）
 - 多企业微信账号管理
 - 企业微信事件存储
+- 通讯录查询（用户信息、部门列表、部门成员、群聊详情）
 - Access Token 自动缓存
 
 ## 目录
@@ -92,7 +93,7 @@ go build -o ./bin/wcfLink ./cmd/wcfLink
 先安装模块：
 
 ```bash
-go get github.com/lich0821/wcfLink@latest
+go get github.com/QB-Chen/wcfLink@latest
 ```
 
 最小示例：
@@ -105,7 +106,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/lich0821/wcfLink/engine"
+	"github.com/QB-Chen/wcfLink/engine"
 )
 
 func main() {
@@ -214,6 +215,10 @@ curl -o qrcode.png "http://127.0.0.1:17890/api/accounts/login/qr?session_id=logi
 - `WeComListEvents`
 - `WeComAddAccount`
 - `WeComRemoveAccount`
+- `WeComGetUser`
+- `WeComListDepartmentUsers`
+- `WeComListDepartments`
+- `WeComGetGroupChat`
 
 当前公开的版本接口：
 

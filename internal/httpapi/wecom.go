@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lich0821/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/model"
 )
 
 func (s *Server) handleWeComCallback(w http.ResponseWriter, r *http.Request) {

@@ -4,13 +4,13 @@ import (
 	"context"
 	"log/slog"
 
-	internalapp "github.com/lich0821/wcfLink/internal/app"
-	"github.com/lich0821/wcfLink/internal/config"
-	"github.com/lich0821/wcfLink/internal/httpapi"
-	"github.com/lich0821/wcfLink/internal/ilink"
-	"github.com/lich0821/wcfLink/internal/model"
-	"github.com/lich0821/wcfLink/internal/wecom"
-	coreversion "github.com/lich0821/wcfLink/version"
+	internalapp "github.com/QB-Chen/wcfLink/internal/app"
+	"github.com/QB-Chen/wcfLink/internal/config"
+	"github.com/QB-Chen/wcfLink/internal/httpapi"
+	"github.com/QB-Chen/wcfLink/internal/ilink"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
+	coreversion "github.com/QB-Chen/wcfLink/version"
 )
 
 type Config = config.Config

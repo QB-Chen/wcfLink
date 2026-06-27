@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lich0821/wcfLink/internal/model"
-	"github.com/lich0821/wcfLink/internal/store"
-	"github.com/lich0821/wcfLink/internal/wecom"
+	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/store"
+	"github.com/QB-Chen/wcfLink/internal/wecom"
 )
 
 type wecomService struct {
