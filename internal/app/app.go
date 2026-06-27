@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/QB-Chen/wcfLink/internal/agent"
+	"github.com/QB-Chen/wcfLink/internal/agent/support"
 	"github.com/QB-Chen/wcfLink/internal/config"
 	"github.com/QB-Chen/wcfLink/internal/httpapi"
 	"github.com/QB-Chen/wcfLink/internal/ilink"
@@ -111,6 +112,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			},
 		)
 
+		supportStore := support.NewStore(st.DB())
+		if err := supportStore.Migrate(ctx); err != nil {
+			return nil, fmt.Errorf("migrate support tables: %w", err)
+		}
+
 		temp := cfg.LLMTemperature
 		agentInst = agent.New(llmClient, convMgr, sender, logger, agent.AgentConfig{
 			DefaultMode:    cfg.AgentDefaultMode,
@@ -119,7 +125,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			Temperature:    &temp,
 			MaxTokens:      cfg.LLMMaxTokens,
 			FetchMaxContent: cfg.FetchMaxContent,
-		})
+		}, supportStore)
 		logger.Info("agent enabled", "mode", cfg.AgentDefaultMode, "model", cfg.LLMModel)
 	}
 
