@@ -46,6 +46,7 @@ type Event struct {
 	EventType    string    `json:"event_type"`
 	FromUserID   string    `json:"from_user_id,omitempty"`
 	ToUserID     string    `json:"to_user_id,omitempty"`
+	GroupID      string    `json:"group_id,omitempty"`
 	MessageID    int64     `json:"message_id,omitempty"`
 	ContextToken string    `json:"context_token,omitempty"`
 	BodyText     string    `json:"body_text,omitempty"`

@@ -253,9 +253,9 @@ func (s *Store) SaveInboundMessage(ctx context.Context, accountID string, msg il
 
 	_, err = tx.ExecContext(ctx, `
 INSERT OR IGNORE INTO events (
-  account_id, direction, event_type, from_user_id, to_user_id, message_id, context_token, body_text, media_path, media_file_name, media_mime_type, raw_json, created_at
-) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		accountID, detectEventType(msg), msg.FromUserID, msg.ToUserID, msg.MessageID, msg.ContextToken, bodyText, mediaPath, mediaFileName, mediaMimeType, string(raw), now,
+  account_id, direction, event_type, from_user_id, to_user_id, group_id, message_id, context_token, body_text, media_path, media_file_name, media_mime_type, raw_json, created_at
+) VALUES (?, 'inbound', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		accountID, detectEventType(msg), msg.FromUserID, msg.ToUserID, msg.GroupID, msg.MessageID, msg.ContextToken, bodyText, mediaPath, mediaFileName, mediaMimeType, string(raw), now,
 	)
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func (s *Store) ListEvents(ctx context.Context, afterID int64, limit int) ([]mod
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, account_id, direction, event_type, from_user_id, to_user_id, message_id, context_token, body_text, media_path, media_file_name, media_mime_type, raw_json, created_at
+SELECT id, account_id, direction, event_type, from_user_id, to_user_id, group_id, message_id, context_token, body_text, media_path, media_file_name, media_mime_type, raw_json, created_at
 FROM events
 WHERE id > ?
 ORDER BY id ASC
@@ -358,7 +358,7 @@ LIMIT ?`, afterID, limit)
 	for rows.Next() {
 		var item model.Event
 		if err := rows.Scan(
-			&item.ID, &item.AccountID, &item.Direction, &item.EventType, &item.FromUserID, &item.ToUserID,
+			&item.ID, &item.AccountID, &item.Direction, &item.EventType, &item.FromUserID, &item.ToUserID, &item.GroupID,
 			&item.MessageID, &item.ContextToken, &item.BodyText, &item.MediaPath, &item.MediaFileName, &item.MediaMimeType, &item.RawJSON, &item.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -413,6 +413,7 @@ func (s *Store) migrate(ctx context.Context) error {
 			event_type TEXT NOT NULL,
 			from_user_id TEXT NOT NULL DEFAULT '',
 			to_user_id TEXT NOT NULL DEFAULT '',
+			group_id TEXT NOT NULL DEFAULT '',
 			message_id INTEGER NOT NULL DEFAULT 0,
 			context_token TEXT NOT NULL DEFAULT '',
 			body_text TEXT NOT NULL DEFAULT '',
@@ -477,6 +478,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		`ALTER TABLE events ADD COLUMN media_path TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE events ADD COLUMN media_file_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE events ADD COLUMN media_mime_type TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE events ADD COLUMN group_id TEXT NOT NULL DEFAULT ''`,
 	} {
 		if err := s.execMigrationCompat(ctx, stmt); err != nil {
 			return err
@@ -498,23 +500,33 @@ func (s *Store) execMigrationCompat(ctx context.Context, stmt string) error {
 func extractBodyText(msg ilink.WeixinMessage) string {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 1:
+		case ilink.MessageItemTypeText:
 			if item.TextItem != nil {
 				return item.TextItem.Text
 			}
-		case 3:
+		case ilink.MessageItemTypeVoice:
 			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
 				return item.VoiceItem.Text
 			}
-		case 2:
+		case ilink.MessageItemTypeImage:
 			return "[image]"
-		case 4:
+		case ilink.MessageItemTypeFile:
 			if item.FileItem != nil && item.FileItem.FileName != "" {
 				return "[file] " + item.FileItem.FileName
 			}
 			return "[file]"
-		case 5:
+		case ilink.MessageItemTypeVideo:
 			return "[video]"
+		case ilink.MessageItemTypeToolCallStart:
+			if item.ToolCallStartItem != nil {
+				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
+			}
+			return "[tool_call_start]"
+		case ilink.MessageItemTypeToolCallResult:
+			if item.ToolCallResultItem != nil {
+				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
+			}
+			return "[tool_call_result]"
 		}
 	}
 	return ""
@@ -523,16 +535,20 @@ func extractBodyText(msg ilink.WeixinMessage) string {
 func detectEventType(msg ilink.WeixinMessage) string {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 1:
+		case ilink.MessageItemTypeText:
 			return "text"
-		case 2:
+		case ilink.MessageItemTypeImage:
 			return "image"
-		case 3:
+		case ilink.MessageItemTypeVoice:
 			return "voice"
-		case 4:
+		case ilink.MessageItemTypeFile:
 			return "file"
-		case 5:
+		case ilink.MessageItemTypeVideo:
 			return "video"
+		case ilink.MessageItemTypeToolCallStart:
+			return "tool_call_start"
+		case ilink.MessageItemTypeToolCallResult:
+			return "tool_call_result"
 		}
 	}
 	return "unknown"

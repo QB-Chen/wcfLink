@@ -7,6 +7,7 @@ import (
 	internalapp "github.com/lich0821/wcfLink/internal/app"
 	"github.com/lich0821/wcfLink/internal/config"
 	"github.com/lich0821/wcfLink/internal/httpapi"
+	"github.com/lich0821/wcfLink/internal/ilink"
 	"github.com/lich0821/wcfLink/internal/model"
 	"github.com/lich0821/wcfLink/internal/wecom"
 	coreversion "github.com/lich0821/wcfLink/version"
@@ -24,6 +25,8 @@ type WeComEvent = model.WeComEvent
 type WeComUserInfo = wecom.UserInfo
 type WeComDepartmentInfo = wecom.DepartmentInfo
 type WeComGroupChatInfo = wecom.GroupChatInfo
+type GetConfigResponse = ilink.GetConfigResponse
+type NotifyResponse = ilink.NotifyResponse
 
 type Engine struct {
 	app *internalapp.App
@@ -143,4 +146,20 @@ func (e *Engine) WeComListDepartments(ctx context.Context, corpID, corpSecret st
 
 func (e *Engine) WeComGetGroupChat(ctx context.Context, corpID, corpSecret, chatID string) (WeComGroupChatInfo, error) {
 	return e.app.WeComGetGroupChat(ctx, corpID, corpSecret, chatID)
+}
+
+func (e *Engine) GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (GetConfigResponse, error) {
+	return e.app.GetConfig(ctx, accountID, ilinkUserID, contextToken)
+}
+
+func (e *Engine) SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error {
+	return e.app.SendTyping(ctx, accountID, ilinkUserID, typingTicket, status)
+}
+
+func (e *Engine) NotifyStart(ctx context.Context, accountID string) (NotifyResponse, error) {
+	return e.app.NotifyStart(ctx, accountID)
+}
+
+func (e *Engine) NotifyStop(ctx context.Context, accountID string) (NotifyResponse, error) {
+	return e.app.NotifyStop(ctx, accountID)
 }

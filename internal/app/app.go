@@ -171,6 +171,22 @@ func (a *App) LogoutAccount(ctx context.Context, accountID string) error {
 	return a.svc.LogoutAccount(ctx, accountID)
 }
 
+func (a *App) GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (ilink.GetConfigResponse, error) {
+	return a.svc.GetConfig(ctx, accountID, ilinkUserID, contextToken)
+}
+
+func (a *App) SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error {
+	return a.svc.SendTyping(ctx, accountID, ilinkUserID, typingTicket, status)
+}
+
+func (a *App) NotifyStart(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	return a.svc.NotifyStart(ctx, accountID)
+}
+
+func (a *App) NotifyStop(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	return a.svc.NotifyStop(ctx, accountID)
+}
+
 func (a *App) WeComSendText(ctx context.Context, corpID, corpSecret string, agentID int, toUser, text string) error {
 	return a.wecomSvc.SendText(ctx, corpID, corpSecret, agentID, toUser, text)
 }
@@ -441,6 +457,38 @@ func (s *service) SendMedia(ctx context.Context, accountID, toUserID, mediaType,
 	return nil
 }
 
+func (s *service) GetConfig(ctx context.Context, accountID, ilinkUserID, contextToken string) (ilink.GetConfigResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.GetConfigResponse{}, err
+	}
+	return s.client.GetConfig(ctx, account.BaseURL, account.Token, ilinkUserID, contextToken)
+}
+
+func (s *service) SendTyping(ctx context.Context, accountID, ilinkUserID, typingTicket string, status int) error {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return err
+	}
+	return s.client.SendTyping(ctx, account.BaseURL, account.Token, ilinkUserID, typingTicket, status)
+}
+
+func (s *service) NotifyStart(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.NotifyResponse{}, err
+	}
+	return s.client.NotifyStart(ctx, account.BaseURL, account.Token)
+}
+
+func (s *service) NotifyStop(ctx context.Context, accountID string) (ilink.NotifyResponse, error) {
+	account, err := s.store.GetAccount(ctx, accountID)
+	if err != nil {
+		return ilink.NotifyResponse{}, err
+	}
+	return s.client.NotifyStop(ctx, account.BaseURL, account.Token)
+}
+
 func (s *service) HandleInboundMessage(ctx context.Context, account model.Account, msg ilink.WeixinMessage) error {
 	mediaPath, mediaFileName, mediaMimeType := "", "", ""
 	if mediaItem, ok := firstInboundMediaItem(msg); ok {
@@ -469,6 +517,8 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 		"body_text":       extractBodyText(msg),
 		"from_user_id":    msg.FromUserID,
 		"to_user_id":      msg.ToUserID,
+		"group_id":        msg.GroupID,
+		"session_id":      msg.SessionID,
 		"message_id":      msg.MessageID,
 		"context_token":   msg.ContextToken,
 		"media_path":      mediaPath,
@@ -485,11 +535,11 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 	if settings.WebhookURL == "" {
 		text := "[non-text]"
 		for _, item := range msg.ItemList {
-			if item.Type == 1 && item.TextItem != nil && item.TextItem.Text != "" {
+			if item.Type == ilink.MessageItemTypeText && item.TextItem != nil && item.TextItem.Text != "" {
 				text = item.TextItem.Text
 				break
 			}
-			if item.Type == 3 && item.VoiceItem != nil && item.VoiceItem.Text != "" {
+			if item.Type == ilink.MessageItemTypeVoice && item.VoiceItem != nil && item.VoiceItem.Text != "" {
 				text = item.VoiceItem.Text
 				break
 			}
@@ -582,7 +632,7 @@ func normalizeMediaSendType(mediaType, filePath string) (string, int, error) {
 func firstInboundMediaItem(msg ilink.WeixinMessage) (ilink.MessageItem, bool) {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 2, 3, 4, 5:
+		case ilink.MessageItemTypeImage, ilink.MessageItemTypeVoice, ilink.MessageItemTypeFile, ilink.MessageItemTypeVideo:
 			return item, true
 		}
 	}
@@ -696,23 +746,33 @@ func isAudioFilePath(filePath string) bool {
 func extractBodyText(msg ilink.WeixinMessage) string {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 1:
+		case ilink.MessageItemTypeText:
 			if item.TextItem != nil {
 				return item.TextItem.Text
 			}
-		case 3:
+		case ilink.MessageItemTypeVoice:
 			if item.VoiceItem != nil && item.VoiceItem.Text != "" {
 				return item.VoiceItem.Text
 			}
-		case 2:
+		case ilink.MessageItemTypeImage:
 			return "[image]"
-		case 4:
+		case ilink.MessageItemTypeFile:
 			if item.FileItem != nil && item.FileItem.FileName != "" {
 				return "[file] " + item.FileItem.FileName
 			}
 			return "[file]"
-		case 5:
+		case ilink.MessageItemTypeVideo:
 			return "[video]"
+		case ilink.MessageItemTypeToolCallStart:
+			if item.ToolCallStartItem != nil {
+				return "[tool_call_start] " + item.ToolCallStartItem.ToolName
+			}
+			return "[tool_call_start]"
+		case ilink.MessageItemTypeToolCallResult:
+			if item.ToolCallResultItem != nil {
+				return "[tool_call_result] " + item.ToolCallResultItem.ToolName + " " + item.ToolCallResultItem.Status
+			}
+			return "[tool_call_result]"
 		}
 	}
 	return ""
@@ -721,16 +781,20 @@ func extractBodyText(msg ilink.WeixinMessage) string {
 func detectEventType(msg ilink.WeixinMessage) string {
 	for _, item := range msg.ItemList {
 		switch item.Type {
-		case 1:
+		case ilink.MessageItemTypeText:
 			return "text"
-		case 2:
+		case ilink.MessageItemTypeImage:
 			return "image"
-		case 3:
+		case ilink.MessageItemTypeVoice:
 			return "voice"
-		case 4:
+		case ilink.MessageItemTypeFile:
 			return "file"
-		case 5:
+		case ilink.MessageItemTypeVideo:
 			return "video"
+		case ilink.MessageItemTypeToolCallStart:
+			return "tool_call_start"
+		case ilink.MessageItemTypeToolCallResult:
+			return "tool_call_result"
 		}
 	}
 	return "unknown"
