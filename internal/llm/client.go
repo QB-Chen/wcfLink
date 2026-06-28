@@ -93,6 +93,10 @@ func NewClient(baseURL, apiKey, model string) *Client {
 	}
 }
 
+func (c *Client) ModelName() string {
+	return c.model
+}
+
 func (c *Client) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	if req.Model == "" {
 		req.Model = c.model
