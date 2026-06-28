@@ -983,7 +983,7 @@ func splitMessage(text string) []string {
 
 ## 10. 分阶段实施计划
 
-### 第一阶段：核心 Agent（MVP）
+### 第一阶段：核心 Agent（MVP） ✅ 已完成
 
 **目标**：跑通"收消息 → AI 回复"的完整链路，支持多轮对话和基础工具。
 
@@ -1009,7 +1009,9 @@ func splitMessage(text string) []string {
 - 支持 DeepSeek / OpenAI Compatible 任意 LLM
 - 通过 HTTP API 也能直接对话（调试用）
 
-### 第二阶段：专业模式
+**实现说明**：全部模块已完成，包括 LLM 客户端、会话管理器、Agent 主循环、web_search/url_content_fetch 工具、消息路由集成、模式系统、配置集成、数据库 Schema、HTTP API、消息分段发送。
+
+### 第二阶段：专业模式 ✅ 已完成
 
 **目标**：添加市场分析、PRD、原型等专业模式的系统提示词和模式切换。
 
@@ -1022,34 +1024,40 @@ func splitMessage(text string) []string {
 
 **预计工时**：约 3 天
 
-### 第三阶段：增强工具
+**实现说明**：全部模式已完成（`internal/agent/modes/`）。含 Icemark、Market、PRD、Prototype 四种模式，以及额外实现的 Support（客服助手）模式。模式切换命令 `/icemark`、`/market`、`/prd`、`/prototype`、`/support` 均已支持。
+
+### 第三阶段：增强工具 ✅ 已完成
 
 **目标**：补充社交平台搜索、报告生成等高级工具。
 
-| 模块 | 说明 |
-|------|------|
-| 小红书搜索 | 小红书搜索接口 |
-| 知乎搜索 | 知乎搜索接口 |
-| 微博搜索 | 微博搜索接口 |
-| Reddit 搜索 | Reddit 搜索接口 |
-| 报告生成 | 生成 Markdown 报告文件并发送 |
-| 原型生成 | 生成 HTML 原型文件并发送 |
-| 上下文摘要 | 长对话自动摘要压缩 |
+| 模块 | 说明 | 状态 |
+|------|------|------|
+| 小红书搜索 | `social_search` 工具，platform="xiaohongshu" | ✅ 已完成 |
+| 知乎搜索 | `social_search` 工具，platform="zhihu" | ✅ 已完成 |
+| 微博搜索 | `social_search` 工具，platform="weibo" | ✅ 已完成 |
+| Reddit 搜索 | `social_search` 工具，platform="reddit" | ✅ 已完成 |
+| 报告生成 | `generate_report` 工具，生成结构化 Markdown 报告 | ✅ 已完成 |
+| 原型生成 | `generate_prototype` 工具，生成 HTML5+Bootstrap 原型 | ✅ 已完成 |
+| 上下文摘要 | `internal/agent/summarizer.go`，长对话自动摘要压缩 | ✅ 已完成 |
 
 **预计工时**：约 5 天
 
-### 第四阶段：高级功能
+**实现说明**：社交平台搜索通过统一的 `social_search` 工具实现，支持四个平台。报告和原型生成以文本消息输出（文件发送能力待实现）。上下文摘要支持自动检测 token 阈值并压缩历史消息。（PR #9、PR #10）
+
+### 第四阶段：高级功能 ✅ 已完成
 
 **目标**：自定义模式、多 LLM 提供商切换等。
 
-| 模块 | 说明 |
-|------|------|
-| 自定义模式 | 用户通过配置文件或 API 自定义模式提示词 |
-| 多 LLM 支持 | 不同模式可配置不同的 LLM 提供商 |
-| 用量统计 | 统计每个用户/会话的 token 消耗 |
-| 用量限制 | 可配置每日/每月 token 限额 |
+| 模块 | 说明 | 状态 |
+|------|------|------|
+| 自定义模式 | CRUD API `/api/agent/modes/custom`，支持 `/slug` 命令切换 | ✅ 已完成 |
+| 多 LLM 支持 | CRUD API `/api/agent/llm-providers`，自定义模式可绑定不同提供商 | ✅ 已完成 |
+| 用量统计 | 每次 LLM 调用自动记录 token 消耗，`/api/agent/usage` 查询 | ✅ 已完成 |
+| 用量限制 | `WCFLINK_AGENT_DAILY_TOKEN_LIMIT` / `WCFLINK_AGENT_MONTHLY_TOKEN_LIMIT` | ✅ 已完成 |
 
 **预计工时**：约 4 天
+
+**实现说明**：自定义模式通过 SQLite 持久化，slug 校验拒绝内置模式和保留命令名冲突。多 LLM 支持通过 `providerCache` 缓存客户端实例并保证并发安全。API Key 在响应中自动脱敏。用量限制在 `HandleMessage` 入口检查，超限返回中文提示。（PR #11、PR #13）
 
 ---
 
