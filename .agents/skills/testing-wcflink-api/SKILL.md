@@ -1,6 +1,6 @@
 ---
 name: testing-wcflink-api
-description: Test wcfLink backend API hardening and local runtime flows. Use when verifying HTTP auth, listen-address protection, settings updates, media-send path restrictions, or sensitive metadata redaction.
+description: Test wcfLink backend API hardening and local runtime flows. Use when verifying HTTP auth, listen-address protection, settings updates, media-send path restrictions, sensitive metadata redaction, or Phase 4 agent features (custom modes, LLM providers, usage stats, usage limits).
 ---
 
 # wcfLink API Runtime Testing
@@ -39,6 +39,49 @@ Use this skill when a change affects the backend HTTP API, configuration, local 
 12. To verify log redaction, seed or trigger app-style redacted log metadata and query `/api/logs`; the response should include expected routing metadata but no context-token sentinel or `context_token` field.
 13. Clean up background server processes with a trap in shell scripts so ports are not left open.
 
+## Phase 4 Agent Feature Testing
+
+To test custom modes, LLM providers, usage statistics, and usage limits, start the server with agent enabled:
+
+```bash
+WCFLINK_STATE_DIR=.devin-test-artifacts/state-agent \
+WCFLINK_LISTEN_ADDR=127.0.0.1:18082 \
+WCFLINK_API_TOKEN=devin-test-token \
+WCFLINK_AGENT_ENABLED=true \
+WCFLINK_LLM_API_KEY=sk-dummy-test-key \
+WCFLINK_LLM_BASE_URL=http://127.0.0.1:9999 \
+WCFLINK_LLM_MODEL=test-model \
+.devin-test-artifacts/wcfLink-test
+```
+
+A dummy LLM base URL is sufficient for CRUD testing of modes/providers/usage (these are pure DB operations). For usage limit testing, also set `WCFLINK_AGENT_DAILY_TOKEN_LIMIT=100` or `WCFLINK_AGENT_MONTHLY_TOKEN_LIMIT=1000`.
+
+### Custom Modes API (`/api/agent/modes/custom`)
+- CRUD: POST (create), GET (list/get by ID), PUT (update by ID), DELETE (delete by ID)
+- Slug validation: built-in slugs (icemark, market, prd, prototype, support) are rejected with HTTP 409
+- Empty slug/name returns HTTP 400
+- Note: PUT overwrites all fields (standard REST PUT, not PATCH)
+
+### LLM Providers API (`/api/agent/llm-providers`)
+- CRUD: POST (create), GET (list/get by ID), PUT (update by ID), DELETE (delete by ID)
+- API key redaction: responses always show `first4***last4` (or `***` for keys <= 8 chars)
+- Redacted key preservation: if PUT body contains `***` in api_key, the server preserves the original key from DB
+- To verify key preservation, check the SQLite DB directly with Python: `sqlite3.connect('.../wcfLink.db')` then `SELECT api_key FROM llm_providers WHERE id=?`
+- Note: the DB file might be `wcfLink.db` (capital L), not `wcflink.db`
+
+### Usage Statistics API (`/api/agent/usage`)
+- Query params: `period=daily|monthly`, `user_id=optional`
+- To test, seed `token_usage` table directly via Python sqlite3 with known values, then query the API and verify exact totals
+- Fields returned: `user_id`, `total_prompt_tokens`, `total_completion_tokens`, `total_tokens`, `request_count`
+
+### Usage Limit Enforcement
+- Set `WCFLINK_AGENT_DAILY_TOKEN_LIMIT` env var before starting the server
+- Seed `token_usage` records exceeding the limit for a specific user_id
+- Send chat via `POST /api/agent/chat` with `{"session_id":"<user_id>","message":"hello"}`
+- **Important**: the chat endpoint uses `session_id` as `UserID` for limit checks, NOT a separate `user_id` field (see `httpapi/server.go:284-288`)
+- Over-limit response: `"今日 token 用量已达上限（N/M），请明天再试。"`
+- Under-limit: proceeds to LLM call (will get connection refused with dummy URL)
+
 ## Useful assertions
 
 - `GET /health/live` without token returns HTTP 200 and JSON containing `"ok":true`.
@@ -49,3 +92,6 @@ Use this skill when a change affects the backend HTTP API, configuration, local 
 - `GET /api/events` must not expose `context_token`, `raw_json`, or sentinel secret values even if those values exist in DB-only columns.
 - DB `peer_contexts.context_token` should remain populated for reply functionality.
 - `store.SaveInboundMessage` should preserve `events.context_token` while redacting `events.raw_json`.
+- Custom mode creation with built-in slug returns HTTP 409.
+- LLM provider API responses never contain raw API keys (always redacted).
+- Usage limit check blocks over-limit users with Chinese error message before LLM call.
