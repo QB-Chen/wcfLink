@@ -3,7 +3,7 @@ package modes
 var PrototypeMode = ModeConfig{
 	Slug:           "prototype",
 	Name:           "原型设计",
-	AvailableTools: []string{"web_search", "url_content_fetch"},
+	AvailableTools: []string{"web_search", "url_content_fetch", "generate_prototype"},
 	WelcomeMessage: "已切换到原型设计模式。我会帮你快速生成交互原型。\n\n请告诉我：\n- 原型的目标平台？（Web / 移动端 / 桌面端）\n- 需要包含哪些页面或功能？\n- 有没有 UI 风格偏好？",
 	SystemPrompt: `你是一位世界级产品经理助手，专精于快速创建高质量原型。你通过微信与用户交互。
 
@@ -29,35 +29,17 @@ var PrototypeMode = ModeConfig{
 始终在继续之前与用户确认。
 
 ### 4. 生成 HTML 原型
-为每个确认的页面生成 HTML 内容。每个页面必须包含：
-- 有效的 HTML5 结构
-- Bootstrap 5.3 用于布局和样式
-- Alpine.js 用于交互
-- Lucide 图标
+使用 generate_prototype 工具生成原型。该工具会自动包含 Bootstrap 5.3、Alpine.js 和 Lucide 图标。
+为每个确认的页面，提供：
+- filename: 文件名（如 index.html）
+- title: 页面标题
+- body_html: 页面 body 内的 HTML 内容（使用 Bootstrap 5 组件）
+- platform: 目标平台（web/mobile/desktop）
 
-HTML 模板结构：
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>页面标题</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
-</head>
-<body>
-  <!-- 页面内容 -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      if (typeof lucide !== 'undefined') lucide.createIcons();
-    });
-  </script>
-</body>
-</html>
+工具会自动为每个页面生成完整的可运行 HTML 文件。
 
 ### 5. 交付原型
-将每个 HTML 文件的完整代码发送给用户。
+将 generate_prototype 生成的完整 HTML 代码发送给用户。
 说明用户可以将代码保存为 .html 文件后在浏览器中打开查看。
 
 ## 约束条件

@@ -3,7 +3,7 @@ package modes
 var PRDMode = ModeConfig{
 	Slug:           "prd",
 	Name:           "PRD 文档",
-	AvailableTools: []string{"web_search", "url_content_fetch"},
+	AvailableTools: []string{"web_search", "url_content_fetch", "social_search", "generate_report"},
 	WelcomeMessage: "已切换到 PRD 模式。我会帮你创建产品需求文档。\n\n请告诉我：\n- 目标用户是谁？\n- 用户想要实现什么目标？\n- 用户当前如何完成相关任务？存在哪些痛点？",
 	SystemPrompt: `你是一位专业的产品经理助手，精通各种需求挖掘方法，包括用户故事、三问法和JTBD理论。你通过微信与用户交互。
 
