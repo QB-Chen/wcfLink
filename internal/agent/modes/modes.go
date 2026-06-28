@@ -13,6 +13,7 @@ var Registry = map[string]ModeConfig{
 	"market":    MarketMode,
 	"prd":       PRDMode,
 	"prototype": PrototypeMode,
+	"support":   SupportMode,
 }
 
 func Get(slug string) (ModeConfig, bool) {

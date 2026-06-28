@@ -103,6 +103,31 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("POST /api/wecom/callback", s.handleWeComCallback)
 	}
 
+	// Support module
+	mux.HandleFunc("GET /api/support/kb", s.handleKBList)
+	mux.HandleFunc("GET /api/support/kb/search", s.handleKBSearch)
+	mux.HandleFunc("POST /api/support/kb", s.handleKBCreate)
+	mux.HandleFunc("GET /api/support/kb/", s.handleKBGet)
+	mux.HandleFunc("PUT /api/support/kb/", s.handleKBUpdate)
+	mux.HandleFunc("DELETE /api/support/kb/", s.handleKBDelete)
+
+	mux.HandleFunc("GET /api/support/tickets", s.handleTicketList)
+	mux.HandleFunc("POST /api/support/tickets", s.handleTicketCreate)
+	mux.HandleFunc("GET /api/support/tickets/", s.handleTicketGet)
+	mux.HandleFunc("PUT /api/support/tickets/", s.handleTicketUpdate)
+
+	mux.HandleFunc("GET /api/support/orders", s.handleOrderList)
+	mux.HandleFunc("POST /api/support/orders", s.handleOrderCreate)
+	mux.HandleFunc("GET /api/support/orders/", s.handleOrderGet)
+	mux.HandleFunc("POST /api/support/orders/{id}/refund", s.handleOrderRefund)
+
+	mux.HandleFunc("GET /api/support/profiles", s.handleProfileList)
+	mux.HandleFunc("POST /api/support/profiles", s.handleProfileCreate)
+	mux.HandleFunc("GET /api/support/profiles/", s.handleProfileGet)
+	mux.HandleFunc("PUT /api/support/profiles/", s.handleProfileUpdate)
+	mux.HandleFunc("DELETE /api/support/profiles/", s.handleProfileDelete)
+	mux.HandleFunc("POST /api/support/profiles/{id}/default", s.handleProfileSetDefault)
+
 	mux.HandleFunc("GET /api/agent/status", s.handleAgentStatus)
 	mux.HandleFunc("GET /api/agent/conversations", s.handleAgentListConversations)
 	mux.HandleFunc("GET /api/agent/conversations/", s.handleAgentGetConversation)
