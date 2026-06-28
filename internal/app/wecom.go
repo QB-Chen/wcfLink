@@ -13,6 +13,7 @@ import (
 
 	"github.com/QB-Chen/wcfLink/internal/agent"
 	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/netguard"
 	"github.com/QB-Chen/wcfLink/internal/store"
 	"github.com/QB-Chen/wcfLink/internal/wecom"
 )
@@ -114,22 +115,26 @@ func (s *wecomService) sendReply(ctx context.Context, account wecom.AccountConfi
 }
 
 func (s *wecomService) deliverWeComWebhook(webhookURL string, account wecom.AccountConfig, msg wecom.InboundMessage, rawJSON []byte) {
+	if err := netguard.ValidateOutboundURL(context.Background(), webhookURL); err != nil {
+		_ = s.store.AddLog(context.Background(), "ERROR", "wecom webhook url rejected", "wecom_webhook", err.Error())
+		return
+	}
 	payload, _ := json.Marshal(map[string]any{
-		"channel":      "wecom",
-		"corp_id":      account.CorpID,
-		"agent_id":     account.AgentID,
-		"from_user":    msg.FromUserName,
-		"to_user":      msg.ToUserName,
-		"msg_type":     msg.MsgType,
-		"content":      msg.Content,
-		"msg_id":       msg.MsgID,
-		"media_id":     msg.MediaID,
-		"pic_url":      msg.PicURL,
-		"recognition":  msg.Recognition,
-		"event_type":   msg.EventType,
-		"event_key":    msg.EventKey,
-		"raw_message":  json.RawMessage(rawJSON),
-		"received_at":  time.Now().UTC(),
+		"channel":     "wecom",
+		"corp_id":     account.CorpID,
+		"agent_id":    account.AgentID,
+		"from_user":   msg.FromUserName,
+		"to_user":     msg.ToUserName,
+		"msg_type":    msg.MsgType,
+		"content":     msg.Content,
+		"msg_id":      msg.MsgID,
+		"media_id":    msg.MediaID,
+		"pic_url":     msg.PicURL,
+		"recognition": msg.Recognition,
+		"event_type":  msg.EventType,
+		"event_key":   msg.EventKey,
+		"raw_message": json.RawMessage(rawJSON),
+		"received_at": time.Now().UTC(),
 	})
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, webhookURL, bytes.NewReader(payload))
 	if err != nil {
@@ -137,7 +142,7 @@ func (s *wecomService) deliverWeComWebhook(webhookURL string, account wecom.Acco
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netguard.NewHTTPClient(10 * time.Second).Do(req)
 	if err != nil {
 		_ = s.store.AddLog(context.Background(), "ERROR", "wecom webhook delivery failed", "wecom_webhook", err.Error())
 		return
@@ -151,22 +156,26 @@ func (s *wecomService) deliverWeComWebhook(webhookURL string, account wecom.Acco
 }
 
 func (s *wecomService) deliverWeComWebhookAndReply(ctx context.Context, webhookURL string, account wecom.AccountConfig, msg wecom.InboundMessage, rawJSON []byte) {
+	if err := netguard.ValidateOutboundURL(ctx, webhookURL); err != nil {
+		s.logger.Error("wecom auto-reply: webhook url rejected", "err", err)
+		return
+	}
 	payload, _ := json.Marshal(map[string]any{
-		"channel":      "wecom",
-		"corp_id":      account.CorpID,
-		"agent_id":     account.AgentID,
-		"from_user":    msg.FromUserName,
-		"to_user":      msg.ToUserName,
-		"msg_type":     msg.MsgType,
-		"content":      msg.Content,
-		"msg_id":       msg.MsgID,
-		"media_id":     msg.MediaID,
-		"pic_url":      msg.PicURL,
-		"recognition":  msg.Recognition,
-		"event_type":   msg.EventType,
-		"event_key":    msg.EventKey,
-		"raw_message":  json.RawMessage(rawJSON),
-		"received_at":  time.Now().UTC(),
+		"channel":     "wecom",
+		"corp_id":     account.CorpID,
+		"agent_id":    account.AgentID,
+		"from_user":   msg.FromUserName,
+		"to_user":     msg.ToUserName,
+		"msg_type":    msg.MsgType,
+		"content":     msg.Content,
+		"msg_id":      msg.MsgID,
+		"media_id":    msg.MediaID,
+		"pic_url":     msg.PicURL,
+		"recognition": msg.Recognition,
+		"event_type":  msg.EventType,
+		"event_key":   msg.EventKey,
+		"raw_message": json.RawMessage(rawJSON),
+		"received_at": time.Now().UTC(),
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(payload))
@@ -176,7 +185,7 @@ func (s *wecomService) deliverWeComWebhookAndReply(ctx context.Context, webhookU
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := netguard.NewHTTPClient(60 * time.Second)
 	resp, err := client.Do(req)
 	if err != nil {
 		s.logger.Error("wecom auto-reply: webhook request failed", "err", err)
@@ -185,7 +194,7 @@ func (s *wecomService) deliverWeComWebhookAndReply(ctx context.Context, webhookU
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		s.logger.Error("wecom auto-reply: webhook returned error", "status", resp.StatusCode)
 		return

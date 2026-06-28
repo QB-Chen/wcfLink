@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QB-Chen/wcfLink/internal/llm"
+	"github.com/QB-Chen/wcfLink/internal/netguard"
 )
 
 var (
@@ -37,15 +38,7 @@ func NewURLFetchTool(maxContentLength int) *URLFetchTool {
 		maxContentLength = 8000
 	}
 	return &URLFetchTool{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return fmt.Errorf("too many redirects")
-				}
-				return nil
-			},
-		},
+		httpClient:       netguard.NewHTTPClient(30 * time.Second),
 		maxContentLength: maxContentLength,
 	}
 }
@@ -83,6 +76,9 @@ func (t *URLFetchTool) Execute(ctx context.Context, arguments string) (string, e
 	}
 	if args.URL == "" {
 		return "", fmt.Errorf("url is required")
+	}
+	if err := netguard.ValidateOutboundURL(ctx, args.URL); err != nil {
+		return fmt.Sprintf("URL 被安全策略拒绝: %v", err), nil
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, args.URL, nil)

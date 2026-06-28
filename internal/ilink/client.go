@@ -54,9 +54,9 @@ type VoiceItem struct {
 
 type FileItem struct {
 	Media    CDNMedia `json:"media,omitempty"`
-	FileName string `json:"file_name,omitempty"`
-	MD5      string `json:"md5,omitempty"`
-	Len      string `json:"len,omitempty"`
+	FileName string   `json:"file_name,omitempty"`
+	MD5      string   `json:"md5,omitempty"`
+	Len      string   `json:"len,omitempty"`
 }
 
 type CDNMedia struct {
@@ -116,19 +116,19 @@ const (
 )
 
 type MessageItem struct {
-	Type               int                  `json:"type,omitempty"`
-	CreateTimeMS       int64                `json:"create_time_ms,omitempty"`
-	UpdateTimeMS       int64                `json:"update_time_ms,omitempty"`
-	IsCompleted        bool                 `json:"is_completed,omitempty"`
-	MsgID              string               `json:"msg_id,omitempty"`
-	RefMsg             *RefMessage          `json:"ref_msg,omitempty"`
-	TextItem           *TextItem            `json:"text_item,omitempty"`
-	VoiceItem          *VoiceItem           `json:"voice_item,omitempty"`
-	FileItem           *FileItem            `json:"file_item,omitempty"`
-	ImageItem          *ImageItem           `json:"image_item,omitempty"`
-	VideoItem          *VideoItem           `json:"video_item,omitempty"`
-	ToolCallStartItem  *ToolCallStartItem   `json:"tool_call_start_item,omitempty"`
-	ToolCallResultItem *ToolCallResultItem  `json:"tool_call_result_item,omitempty"`
+	Type               int                 `json:"type,omitempty"`
+	CreateTimeMS       int64               `json:"create_time_ms,omitempty"`
+	UpdateTimeMS       int64               `json:"update_time_ms,omitempty"`
+	IsCompleted        bool                `json:"is_completed,omitempty"`
+	MsgID              string              `json:"msg_id,omitempty"`
+	RefMsg             *RefMessage         `json:"ref_msg,omitempty"`
+	TextItem           *TextItem           `json:"text_item,omitempty"`
+	VoiceItem          *VoiceItem          `json:"voice_item,omitempty"`
+	FileItem           *FileItem           `json:"file_item,omitempty"`
+	ImageItem          *ImageItem          `json:"image_item,omitempty"`
+	VideoItem          *VideoItem          `json:"video_item,omitempty"`
+	ToolCallStartItem  *ToolCallStartItem  `json:"tool_call_start_item,omitempty"`
+	ToolCallResultItem *ToolCallResultItem `json:"tool_call_result_item,omitempty"`
 }
 
 type WeixinMessage struct {
@@ -165,9 +165,9 @@ type SendMessageResponse struct {
 }
 
 type GetConfigResponse struct {
-	Ret           int    `json:"ret,omitempty"`
-	ErrMsg        string `json:"errmsg,omitempty"`
-	TypingTicket  string `json:"typing_ticket,omitempty"`
+	Ret          int    `json:"ret,omitempty"`
+	ErrMsg       string `json:"errmsg,omitempty"`
+	TypingTicket string `json:"typing_ticket,omitempty"`
 }
 
 type NotifyResponse struct {
@@ -291,9 +291,9 @@ func (c *Client) GetConfig(ctx context.Context, baseURL, token, ilinkUserID, con
 
 func (c *Client) SendTyping(ctx context.Context, baseURL, token, ilinkUserID, typingTicket string, status int) error {
 	body := map[string]any{
-		"ilink_user_id":  ilinkUserID,
-		"typing_ticket":  typingTicket,
-		"status":         status,
+		"ilink_user_id": ilinkUserID,
+		"typing_ticket": typingTicket,
+		"status":        status,
 		"base_info": map[string]any{
 			"channel_version": c.channelVersion,
 		},

@@ -60,17 +60,17 @@ type UploadMediaResponse struct {
 }
 
 type UserInfo struct {
-	UserID     string   `json:"userid"`
-	Name       string   `json:"name"`
-	Department []int    `json:"department"`
-	Position   string   `json:"position,omitempty"`
-	Mobile     string   `json:"mobile,omitempty"`
-	Gender     string   `json:"gender,omitempty"`
-	Email      string   `json:"email,omitempty"`
-	BizMail    string   `json:"biz_mail,omitempty"`
-	Avatar     string   `json:"avatar,omitempty"`
-	Status     int      `json:"status"`
-	Alias      string   `json:"alias,omitempty"`
+	UserID     string `json:"userid"`
+	Name       string `json:"name"`
+	Department []int  `json:"department"`
+	Position   string `json:"position,omitempty"`
+	Mobile     string `json:"mobile,omitempty"`
+	Gender     string `json:"gender,omitempty"`
+	Email      string `json:"email,omitempty"`
+	BizMail    string `json:"biz_mail,omitempty"`
+	Avatar     string `json:"avatar,omitempty"`
+	Status     int    `json:"status"`
+	Alias      string `json:"alias,omitempty"`
 }
 
 type GetUserResponse struct {
@@ -99,9 +99,9 @@ type DepartmentListResponse struct {
 }
 
 type GroupChatInfo struct {
-	ChatID   string           `json:"chatid"`
-	Name     string           `json:"name"`
-	Owner    string           `json:"owner"`
+	ChatID   string            `json:"chatid"`
+	Name     string            `json:"name"`
+	Owner    string            `json:"owner"`
 	UserList []GroupChatMember `json:"userlist"`
 }
 
@@ -112,7 +112,7 @@ type GroupChatMember struct {
 type GetGroupChatResponse struct {
 	ErrCode  int           `json:"errcode"`
 	ErrMsg   string        `json:"errmsg"`
-	ChatInfo GroupChatInfo  `json:"chat_info"`
+	ChatInfo GroupChatInfo `json:"chat_info"`
 }
 
 type CreateGroupChatRequest struct {
@@ -144,5 +144,3 @@ type InboundMessage struct {
 	EventType    string
 	EventKey     string
 }
-
-

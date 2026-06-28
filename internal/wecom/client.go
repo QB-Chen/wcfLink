@@ -20,8 +20,8 @@ type Client struct {
 	httpClient *http.Client
 	apiBaseURL string
 
-	mu          sync.Mutex
-	tokenCache  map[string]*tokenEntry
+	mu         sync.Mutex
+	tokenCache map[string]*tokenEntry
 }
 
 type tokenEntry struct {

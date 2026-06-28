@@ -454,19 +454,19 @@ func scanOrders(rows *sql.Rows) ([]Order, error) {
 // --- Support Profiles ---
 
 type Profile struct {
-	ID                   string    `json:"id"`
-	Name                 string    `json:"name"`
-	CompanyName          string    `json:"company_name"`
-	Industry             string    `json:"industry"`
-	SystemPrompt         string    `json:"system_prompt"`
-	Greeting             string    `json:"greeting"`
-	EscalationThreshold  float64   `json:"escalation_threshold"`
-	RefundPolicy         string    `json:"refund_policy"`
-	BusinessHours        string    `json:"business_hours"`
-	ExtraConfig          string    `json:"extra_config"`
-	IsDefault            bool      `json:"is_default"`
-	CreatedAt            time.Time `json:"created_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	CompanyName         string    `json:"company_name"`
+	Industry            string    `json:"industry"`
+	SystemPrompt        string    `json:"system_prompt"`
+	Greeting            string    `json:"greeting"`
+	EscalationThreshold float64   `json:"escalation_threshold"`
+	RefundPolicy        string    `json:"refund_policy"`
+	BusinessHours       string    `json:"business_hours"`
+	ExtraConfig         string    `json:"extra_config"`
+	IsDefault           bool      `json:"is_default"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 func (s *Store) ProfileCreate(ctx context.Context, p Profile) (Profile, error) {

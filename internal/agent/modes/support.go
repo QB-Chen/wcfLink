@@ -15,7 +15,7 @@ var SupportMode = ModeConfig{
 		"order_refund",
 	},
 	WelcomeMessage: "已切换到客服助手模式。我会按照专业客服规范为用户提供服务。\n\n你可以直接向我提问，我会先搜索知识库，再结合工具为你解决问题。",
-	SystemPrompt: defaultSupportPrompt,
+	SystemPrompt:   defaultSupportPrompt,
 }
 
 const defaultSupportPrompt = `你是一位专业的客服助手，通过微信与用户交互。你兼具客服服务规范和业务执行能力。
