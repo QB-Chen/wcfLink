@@ -71,10 +71,15 @@ func (h *CallbackHandler) handleVerify(w http.ResponseWriter, msgSignature, time
 		return
 	}
 
-	msg, _, err := DecryptMessage(aesKey, echostr)
+	msg, corpID, err := DecryptMessage(aesKey, echostr)
 	if err != nil {
 		h.logger.Error("wecom callback: decrypt echostr failed", "err", err)
 		http.Error(w, "decrypt failed", http.StatusInternalServerError)
+		return
+	}
+	if corpID != account.CorpID {
+		h.logger.Warn("wecom callback: corp id mismatch", "expected", account.CorpID, "actual", corpID)
+		http.Error(w, "invalid corp id", http.StatusUnauthorized)
 		return
 	}
 	h.logger.Info("wecom callback: URL verified", "corp_id", account.CorpID)
@@ -112,7 +117,10 @@ func (h *CallbackHandler) handleMessage(w http.ResponseWriter, r *http.Request, 
 		h.logger.Error("wecom callback: decrypt failed", "corp_id", account.CorpID, "err", err)
 		return
 	}
-	_ = corpID
+	if corpID != account.CorpID {
+		h.logger.Warn("wecom callback: corp id mismatch", "expected", account.CorpID, "actual", corpID)
+		return
+	}
 
 	xmlMsg, err := ParseDecryptedMessage(xmlStr)
 	if err != nil {

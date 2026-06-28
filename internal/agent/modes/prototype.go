@@ -1,8 +1,8 @@
 package modes
 
 var PrototypeMode = ModeConfig{
-	Slug: "prototype",
-	Name: "原型设计",
+	Slug:           "prototype",
+	Name:           "原型设计",
 	AvailableTools: []string{"web_search", "url_content_fetch"},
 	WelcomeMessage: "已切换到原型设计模式。我会帮你快速生成交互原型。\n\n请告诉我：\n- 原型的目标平台？（Web / 移动端 / 桌面端）\n- 需要包含哪些页面或功能？\n- 有没有 UI 风格偏好？",
 	SystemPrompt: `你是一位世界级产品经理助手，专精于快速创建高质量原型。你通过微信与用户交互。

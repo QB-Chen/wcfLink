@@ -1,8 +1,8 @@
 package modes
 
 var IcemarkMode = ModeConfig{
-	Slug: "icemark",
-	Name: "通用助手",
+	Slug:           "icemark",
+	Name:           "通用助手",
 	AvailableTools: []string{"web_search", "url_content_fetch"},
 	WelcomeMessage: "已切换到通用助手模式。有什么我可以帮你的？",
 	SystemPrompt: `你是 Icemark，一个通用智能助手，具备规划、分析、执行和审查能力。你通过微信与用户交互。

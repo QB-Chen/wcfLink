@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/QB-Chen/wcfLink/internal/ilink"
 	"github.com/QB-Chen/wcfLink/internal/llm"
 	"github.com/QB-Chen/wcfLink/internal/model"
+	"github.com/QB-Chen/wcfLink/internal/netguard"
 	"github.com/QB-Chen/wcfLink/internal/store"
 	"github.com/QB-Chen/wcfLink/internal/wecom"
 	"github.com/QB-Chen/wcfLink/internal/worker"
@@ -41,6 +43,10 @@ type App struct {
 }
 
 func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, error) {
+	if err := validateListenSecurity(cfg.ListenAddr, cfg.APIToken); err != nil {
+		return nil, err
+	}
+
 	st, err := store.New(ctx, cfg.DBPath)
 	if err != nil {
 		return nil, err
@@ -119,11 +125,11 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 
 		temp := cfg.LLMTemperature
 		agentInst = agent.New(llmClient, convMgr, sender, logger, agent.AgentConfig{
-			DefaultMode:    cfg.AgentDefaultMode,
-			MaxIterations:  cfg.AgentMaxIterations,
-			SessionTTL:     cfg.AgentSessionTTL,
-			Temperature:    &temp,
-			MaxTokens:      cfg.LLMMaxTokens,
+			DefaultMode:     cfg.AgentDefaultMode,
+			MaxIterations:   cfg.AgentMaxIterations,
+			SessionTTL:      cfg.AgentSessionTTL,
+			Temperature:     &temp,
+			MaxTokens:       cfg.LLMMaxTokens,
 			FetchMaxContent: cfg.FetchMaxContent,
 		}, supportStore)
 		logger.Info("agent enabled", "mode", cfg.AgentDefaultMode, "model", cfg.LLMModel)
@@ -132,7 +138,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 	svc.agent = agentInst
 	wecomSvc.agentInst = agentInst
 
-	api := httpapi.NewServer(svc, logger, wecomSvc, wecomHandler, agentInst)
+	api := httpapi.NewServer(svc, logger, wecomSvc, wecomHandler, agentInst, cfg.APIToken)
 
 	return &App{
 		cfg:          cfg,
@@ -418,6 +424,9 @@ func (s *service) GetSettings(ctx context.Context) (model.Settings, error) {
 }
 
 func (s *service) UpdateSettings(ctx context.Context, settings model.Settings) (model.Settings, error) {
+	if err := validateListenSecurity(settings.ListenAddr, s.cfg.APIToken); err != nil {
+		return model.Settings{}, err
+	}
 	if err := config.SaveFileSettings(s.cfg.SettingsPath, config.FileSettings{
 		ListenAddr: settings.ListenAddr,
 		WebhookURL: settings.WebhookURL,
@@ -455,7 +464,7 @@ func (s *service) SendText(ctx context.Context, accountID, toUserID, text, conte
 		_ = s.store.AddLog(context.Background(), "ERROR", "outbound send failed", "message", fmt.Sprintf(`{"account_id":%q,"to_user_id":%q,"err":%q}`, accountID, toUserID, err.Error()))
 		return err
 	}
-	raw := fmt.Sprintf(`{"to_user_id":%q,"text":%q,"context_token":%q}`, toUserID, text, contextToken)
+	raw := outboundTextRawJSON(toUserID, text)
 	if err := s.store.CreateOutboundEvent(ctx, accountID, "text", toUserID, contextToken, text, "", "", "", raw); err != nil {
 		return err
 	}
@@ -474,6 +483,10 @@ func (s *service) SendMedia(ctx context.Context, accountID, toUserID, mediaType,
 	}
 	if strings.TrimSpace(contextToken) == "" {
 		return errors.New("context token not found for this user; media sending only supports replying to users who have already sent a message")
+	}
+	filePath, err = validateLocalMediaPath(filePath, s.cfg.MediaSendRoot, s.cfg.MaxMediaBytes)
+	if err != nil {
+		return err
 	}
 
 	normalizedType, uploadType, err := normalizeMediaSendType(mediaType, filePath)
@@ -508,7 +521,7 @@ func (s *service) SendMedia(ctx context.Context, accountID, toUserID, mediaType,
 	}
 
 	mimeType := detectOutboundMIME(normalizedType, filePath)
-	raw := fmt.Sprintf(`{"to_user_id":%q,"file_path":%q,"media_type":%q,"text":%q,"context_token":%q}`, toUserID, filePath, normalizedType, text, contextToken)
+	raw := outboundMediaRawJSON(toUserID, filePath, normalizedType, text)
 	if err := s.store.CreateOutboundEvent(ctx, accountID, normalizedType, toUserID, contextToken, text, filePath, fileName, mimeType, raw); err != nil {
 		return err
 	}
@@ -569,23 +582,11 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 		return err
 	}
 
-	payload, err := json.Marshal(map[string]any{
-		"account_id":      account.AccountID,
-		"base_url":        account.BaseURL,
-		"event_type":      ilink.DetectEventType(msg),
-		"body_text":       ilink.ExtractBodyText(msg),
-		"from_user_id":    msg.FromUserID,
-		"to_user_id":      msg.ToUserID,
-		"group_id":        msg.GroupID,
-		"session_id":      msg.SessionID,
-		"message_id":      msg.MessageID,
-		"context_token":   msg.ContextToken,
-		"media_path":      mediaPath,
-		"media_file_name": mediaFileName,
-		"media_mime_type": mediaMimeType,
-		"raw_message":     msg,
-		"received_at":     time.Now().UTC(),
-	})
+	payload, err := json.Marshal(inboundPayload(account, msg, mediaPath, mediaFileName, mediaMimeType, false))
+	if err != nil {
+		return err
+	}
+	logPayload, err := json.Marshal(inboundPayload(account, msg, mediaPath, mediaFileName, mediaMimeType, true))
 	if err != nil {
 		return err
 	}
@@ -603,7 +604,7 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 					s.logger.Error("agent handle ilink message failed", "err", err)
 				}
 			}()
-			_ = s.store.AddLog(ctx, "INFO", "inbound message routed to agent", "agent", string(payload))
+			_ = s.store.AddLog(ctx, "INFO", "inbound message routed to agent", "agent", string(logPayload))
 			return nil
 		}
 	}
@@ -621,11 +622,56 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 				break
 			}
 		}
-		return s.store.AddLog(ctx, "INFO", fmt.Sprintf("inbound message from %s: %s", msg.FromUserID, text), "inbound", string(payload))
+		return s.store.AddLog(ctx, "INFO", fmt.Sprintf("inbound message from %s: %s", msg.FromUserID, text), "inbound", string(logPayload))
 	}
 
 	go s.deliverWebhook(settings.WebhookURL, payload)
-	return s.store.AddLog(ctx, "INFO", "inbound message queued for webhook", "webhook", string(payload))
+	return s.store.AddLog(ctx, "INFO", "inbound message queued for webhook", "webhook", string(logPayload))
+}
+
+func outboundTextRawJSON(toUserID, text string) string {
+	data, _ := json.Marshal(map[string]any{
+		"to_user_id": toUserID,
+		"text":       text,
+	})
+	return string(data)
+}
+
+func outboundMediaRawJSON(toUserID, filePath, mediaType, text string) string {
+	data, _ := json.Marshal(map[string]any{
+		"to_user_id": toUserID,
+		"file_path":  filePath,
+		"media_type": mediaType,
+		"text":       text,
+	})
+	return string(data)
+}
+
+func inboundPayload(account model.Account, msg ilink.WeixinMessage, mediaPath, mediaFileName, mediaMimeType string, redact bool) map[string]any {
+	rawMsg := msg
+	if redact {
+		rawMsg.ContextToken = ""
+	}
+	payload := map[string]any{
+		"account_id":      account.AccountID,
+		"base_url":        account.BaseURL,
+		"event_type":      ilink.DetectEventType(msg),
+		"body_text":       ilink.ExtractBodyText(msg),
+		"from_user_id":    msg.FromUserID,
+		"to_user_id":      msg.ToUserID,
+		"group_id":        msg.GroupID,
+		"session_id":      msg.SessionID,
+		"message_id":      msg.MessageID,
+		"media_path":      mediaPath,
+		"media_file_name": mediaFileName,
+		"media_mime_type": mediaMimeType,
+		"raw_message":     rawMsg,
+		"received_at":     time.Now().UTC(),
+	}
+	if !redact {
+		payload["context_token"] = msg.ContextToken
+	}
+	return payload
 }
 
 func (s *service) resolveContextToken(ctx context.Context, accountID, toUserID, contextToken string) (string, error) {
@@ -643,12 +689,12 @@ func (s *service) resolveContextToken(ctx context.Context, accountID, toUserID, 
 }
 
 func (s *service) saveInboundMedia(accountID string, messageID int64, fromUserID, fileName, mimeType string, data []byte) (string, string, string, error) {
-	if err := os.MkdirAll(s.cfg.MediaDir, 0o755); err != nil {
+	if err := os.MkdirAll(s.cfg.MediaDir, 0o700); err != nil {
 		return "", "", "", err
 	}
 	now := time.Now()
 	dir := filepath.Join(s.cfg.MediaDir, sanitizePathSegment(accountID), now.Format("2006"), now.Format("01"), now.Format("02"))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", "", "", err
 	}
 
@@ -674,7 +720,7 @@ func (s *service) saveInboundMedia(accountID string, messageID int64, fromUserID
 	}
 	finalName := prefix + "_" + base + ext
 	fullPath := filepath.Join(dir, finalName)
-	if err := os.WriteFile(fullPath, data, 0o644); err != nil {
+	if err := os.WriteFile(fullPath, data, 0o600); err != nil {
 		return "", "", "", err
 	}
 	return fullPath, finalName, mimeType, nil
@@ -820,16 +866,94 @@ func isAudioFilePath(filePath string) bool {
 	}
 }
 
+func validateListenSecurity(listenAddr, apiToken string) error {
+	host, _, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return fmt.Errorf("invalid listen_addr %q: %w", listenAddr, err)
+	}
+	if isLoopbackHost(host) || strings.TrimSpace(apiToken) != "" {
+		return nil
+	}
+	return errors.New("WCFLINK_API_TOKEN is required when listen_addr is not loopback")
+}
 
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validateLocalMediaPath(filePath, root string, maxBytes int64) (string, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return "", errors.New("media send root is required")
+	}
+	if maxBytes <= 0 {
+		return "", errors.New("max media size must be positive")
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	rootPath, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	rootPath, err = filepath.EvalSymlinks(rootPath)
+	if err != nil {
+		return "", err
+	}
+
+	candidate := strings.TrimSpace(filePath)
+	if candidate == "" {
+		return "", errors.New("file_path is required")
+	}
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(rootPath, candidate)
+	}
+	candidate, err = filepath.Abs(candidate)
+	if err != nil {
+		return "", err
+	}
+	candidate, err = filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return "", err
+	}
+	rel, err := filepath.Rel(rootPath, candidate)
+	if err != nil {
+		return "", err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("file_path must be under media send root %s", rootPath)
+	}
+
+	info, err := os.Stat(candidate)
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.New("file_path must point to a regular file")
+	}
+	if info.Size() > maxBytes {
+		return "", fmt.Errorf("media file exceeds max size %d bytes", maxBytes)
+	}
+	return candidate, nil
+}
 
 func (s *service) deliverWebhook(webhookURL string, payload []byte) {
+	if err := netguard.ValidateOutboundURL(context.Background(), webhookURL); err != nil {
+		_ = s.store.AddLog(context.Background(), "ERROR", "webhook url rejected", "webhook", err.Error())
+		return
+	}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, webhookURL, bytes.NewReader(payload))
 	if err != nil {
 		_ = s.store.AddLog(context.Background(), "ERROR", "build webhook request failed", "webhook", err.Error())
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netguard.NewHTTPClient(10 * time.Second).Do(req)
 	if err != nil {
 		_ = s.store.AddLog(context.Background(), "ERROR", "webhook delivery failed", "webhook", err.Error())
 		return

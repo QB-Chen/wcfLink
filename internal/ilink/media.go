@@ -224,7 +224,7 @@ func (c *Client) DownloadMessageMedia(ctx context.Context, cdnBaseURL string, it
 			return nil, "", "", err
 		}
 		mime := detectMIME(buf, ".jpg")
-		return buf, "image"+extensionFromMIME(mime, ".jpg"), mime, nil
+		return buf, "image" + extensionFromMIME(mime, ".jpg"), mime, nil
 	case 3:
 		if item.VoiceItem == nil || strings.TrimSpace(item.VoiceItem.Media.EncryptQueryParam) == "" || strings.TrimSpace(item.VoiceItem.Media.AESKey) == "" {
 			return nil, "", "", fmt.Errorf("voice media is missing")

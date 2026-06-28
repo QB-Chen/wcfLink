@@ -23,11 +23,11 @@ type MessageSender interface {
 }
 
 type AgentConfig struct {
-	DefaultMode    string
-	MaxIterations  int
-	SessionTTL     time.Duration
-	Temperature    *float64
-	MaxTokens      int
+	DefaultMode     string
+	MaxIterations   int
+	SessionTTL      time.Duration
+	Temperature     *float64
+	MaxTokens       int
 	FetchMaxContent int
 }
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -57,15 +58,17 @@ type Server struct {
 	wecomSvc     WeComService
 	wecomHandler WeComCallbackHandler
 	agentInst    *agent.Agent
+	apiToken     string
 }
 
-func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler, agentInst *agent.Agent) *Server {
+func NewServer(service Service, logger *slog.Logger, wecomSvc WeComService, wecomHandler WeComCallbackHandler, agentInst *agent.Agent, apiToken string) *Server {
 	return &Server{
 		logger:       logger,
 		service:      service,
 		wecomSvc:     wecomSvc,
 		wecomHandler: wecomHandler,
 		agentInst:    agentInst,
+		apiToken:     strings.TrimSpace(apiToken),
 	}
 }
 
@@ -134,7 +137,45 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/agent/conversations/", s.handleAgentDeleteConversation)
 	mux.HandleFunc("POST /api/agent/chat", s.handleAgentChat)
 
-	return withJSONContentType(mux)
+	return withJSONContentType(s.withAPIAuth(withMaxRequestBody(mux)))
+}
+
+func (s *Server) withAPIAuth(next http.Handler) http.Handler {
+	if s.apiToken == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAuthExemptPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if s.validAPIToken(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("WWW-Authenticate", `Bearer realm="wcfLink"`)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+	})
+}
+
+func (s *Server) validAPIToken(r *http.Request) bool {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-WcfLink-Api-Token")), []byte(s.apiToken)) == 1 {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))), []byte(s.apiToken)) == 1
+}
+
+func isAuthExemptPath(path string) bool {
+	switch path {
+	case "/health/live", "/health/ready", "/api/version", "/api/wecom/callback":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Server) handleAgentStatus(w http.ResponseWriter, _ *http.Request) {
@@ -549,6 +590,13 @@ func isContextTokenMissingError(err error) bool {
 func withJSONContentType(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func withMaxRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 		next.ServeHTTP(w, r)
 	})
 }

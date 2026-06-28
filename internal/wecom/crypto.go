@@ -45,6 +45,9 @@ func DecryptMessage(aesKey []byte, cipherTextBase64 string) (string, string, err
 	if len(ciphertext) < aes.BlockSize {
 		return "", "", fmt.Errorf("ciphertext too short")
 	}
+	if len(ciphertext)%aes.BlockSize != 0 {
+		return "", "", fmt.Errorf("ciphertext size is not a multiple of block size")
+	}
 
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
@@ -55,7 +58,10 @@ func DecryptMessage(aesKey []byte, cipherTextBase64 string) (string, string, err
 	plaintext := make([]byte, len(ciphertext))
 	mode.CryptBlocks(plaintext, ciphertext)
 
-	plaintext = pkcs7Unpad(plaintext)
+	plaintext, err = pkcs7Unpad(plaintext)
+	if err != nil {
+		return "", "", err
+	}
 
 	if len(plaintext) < 20 {
 		return "", "", fmt.Errorf("decrypted data too short")
@@ -114,18 +120,18 @@ func pkcs7Pad(data []byte, blockSize int) []byte {
 	return out
 }
 
-func pkcs7Unpad(data []byte) []byte {
+func pkcs7Unpad(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return data
+		return nil, fmt.Errorf("invalid PKCS7 padding")
 	}
 	pad := int(data[len(data)-1])
 	if pad < 1 || pad > 32 || pad > len(data) {
-		return data
+		return nil, fmt.Errorf("invalid PKCS7 padding")
 	}
 	for i := len(data) - pad; i < len(data); i++ {
 		if data[i] != byte(pad) {
-			return data
+			return nil, fmt.Errorf("invalid PKCS7 padding")
 		}
 	}
-	return data[:len(data)-pad]
+	return data[:len(data)-pad], nil
 }

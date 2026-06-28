@@ -678,11 +678,17 @@ curl -X POST http://127.0.0.1:17890/api/support/profiles/{id}/default
 | `WCFLINK_STATE_DIR` | 数据目录 | `./bin/data/` |
 | `WCFLINK_DB_PATH` | 数据库路径 | `<state_dir>/wcfLink.db` |
 | `WCFLINK_MEDIA_DIR` | 媒体目录 | `<state_dir>/media/` |
+| `WCFLINK_MEDIA_SEND_ROOT` | 允许 HTTP API 发送本地媒体的根目录 | `<media_dir>` |
+| `WCFLINK_MAX_MEDIA_BYTES` | 单个本地媒体文件最大字节数 | `26214400` |
+| `WCFLINK_API_TOKEN` | HTTP 管理 API Bearer Token；监听非 loopback 地址时必填 | - |
 | `WCFLINK_BASE_URL` | iLink 基础 URL | `https://ilinkai.weixin.qq.com` |
 | `WCFLINK_CDN_BASE_URL` | CDN 基础 URL | `https://novac2c.cdn.weixin.qq.com/c2c` |
 | `WCFLINK_CHANNEL_VERSION` | 协议版本 | `2.0.1` |
 | `WCFLINK_POLL_TIMEOUT` | 长轮询超时 | `35s` |
 | `WCFLINK_LOG_LEVEL` | 日志级别 | `info` |
+
+设置 `WCFLINK_API_TOKEN` 后，除健康检查、版本和企业微信签名回调外，所有 HTTP API
+都需要携带 `Authorization: Bearer <token>` 或 `X-WcfLink-Api-Token: <token>`。
 
 ### 企业微信配置
 

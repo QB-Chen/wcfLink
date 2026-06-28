@@ -22,7 +22,7 @@ type Store struct {
 }
 
 func New(ctx context.Context, dbPath string) (*Store, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o700); err != nil {
 		return nil, err
 	}
 	db, err := sql.Open("sqlite", dbPath)
@@ -36,6 +36,7 @@ func New(ctx context.Context, dbPath string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	_ = os.Chmod(dbPath, 0o600)
 	return s, nil
 }
 
@@ -242,7 +243,9 @@ WHERE account_id = ?`, now, now, accountID)
 }
 
 func (s *Store) SaveInboundMessage(ctx context.Context, accountID string, msg ilink.WeixinMessage, mediaPath, mediaFileName, mediaMimeType string) error {
-	raw, err := json.Marshal(msg)
+	rawMsg := msg
+	rawMsg.ContextToken = ""
+	raw, err := json.Marshal(rawMsg)
 	if err != nil {
 		return err
 	}
