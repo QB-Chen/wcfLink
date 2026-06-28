@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QB-Chen/wcfLink/internal/agent/modes"
@@ -45,6 +46,7 @@ type Agent struct {
 	customModeStore *CustomModeStore
 	usageStore      *UsageStore
 	llmClients      map[string]*llm.Client // keyed by provider ID
+	llmClientsMu    sync.RWMutex
 }
 
 func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSender, logger *slog.Logger, cfg AgentConfig, supportSt *support.Store, cmStore *CustomModeStore, usStore *UsageStore) *Agent {
@@ -228,7 +230,7 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 				UserID:           session.UserID,
 				ChannelType:      session.ChannelType,
 				Mode:             conv.Mode,
-				Model:            req.Model,
+				Model:            activeClient.ModelName(),
 				PromptTokens:     resp.Usage.PromptTokens,
 				CompletionTokens: resp.Usage.CompletionTokens,
 				TotalTokens:      resp.Usage.TotalTokens,
@@ -505,9 +507,13 @@ func (a *Agent) UsageStore() *UsageStore {
 }
 
 func (a *Agent) resolveProviderClient(ctx context.Context, providerID string) *llm.Client {
+	a.llmClientsMu.RLock()
 	if c, ok := a.llmClients[providerID]; ok {
+		a.llmClientsMu.RUnlock()
 		return c
 	}
+	a.llmClientsMu.RUnlock()
+
 	if a.customModeStore == nil {
 		return a.llmClient
 	}
@@ -516,8 +522,16 @@ func (a *Agent) resolveProviderClient(ctx context.Context, providerID string) *l
 		return a.llmClient
 	}
 	c := llm.NewClient(provider.BaseURL, provider.APIKey, provider.Model)
+	a.llmClientsMu.Lock()
 	a.llmClients[providerID] = c
+	a.llmClientsMu.Unlock()
 	return c
+}
+
+func (a *Agent) InvalidateProviderCache(providerID string) {
+	a.llmClientsMu.Lock()
+	delete(a.llmClients, providerID)
+	a.llmClientsMu.Unlock()
 }
 
 func helpText() string {

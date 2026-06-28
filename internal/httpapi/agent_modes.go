@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QB-Chen/wcfLink/internal/agent"
+	"github.com/QB-Chen/wcfLink/internal/agent/modes"
 )
 
 func (s *Server) handleCustomModeList(w http.ResponseWriter, r *http.Request) {
@@ -36,8 +37,14 @@ func (s *Server) handleCustomModeCreate(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	if strings.TrimSpace(cm.Slug) == "" || strings.TrimSpace(cm.Name) == "" {
+	cm.Slug = strings.TrimSpace(cm.Slug)
+	cm.Name = strings.TrimSpace(cm.Name)
+	if cm.Slug == "" || cm.Name == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "slug and name are required"})
+		return
+	}
+	if _, builtin := modes.Get(cm.Slug); builtin {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "slug conflicts with built-in mode: " + cm.Slug})
 		return
 	}
 	created, err := store.CreateMode(r.Context(), cm)
@@ -197,6 +204,9 @@ func (s *Server) handleLLMProviderUpdate(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	if s.agentInst != nil {
+		s.agentInst.InvalidateProviderCache(id)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -214,6 +224,9 @@ func (s *Server) handleLLMProviderDelete(w http.ResponseWriter, r *http.Request)
 	if err := store.DeleteProvider(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
+	}
+	if s.agentInst != nil {
+		s.agentInst.InvalidateProviderCache(id)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
