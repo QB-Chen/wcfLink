@@ -243,7 +243,9 @@ WHERE account_id = ?`, now, now, accountID)
 }
 
 func (s *Store) SaveInboundMessage(ctx context.Context, accountID string, msg ilink.WeixinMessage, mediaPath, mediaFileName, mediaMimeType string) error {
-	raw, err := json.Marshal(msg)
+	rawMsg := msg
+	rawMsg.ContextToken = ""
+	raw, err := json.Marshal(rawMsg)
 	if err != nil {
 		return err
 	}

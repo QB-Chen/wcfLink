@@ -35,7 +35,7 @@ type Account struct {
 type PeerContext struct {
 	AccountID    string    `json:"account_id"`
 	PeerUserID   string    `json:"peer_user_id"`
-	ContextToken string    `json:"context_token"`
+	ContextToken string    `json:"-"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
@@ -48,12 +48,12 @@ type Event struct {
 	ToUserID      string    `json:"to_user_id,omitempty"`
 	GroupID       string    `json:"group_id,omitempty"`
 	MessageID     int64     `json:"message_id,omitempty"`
-	ContextToken  string    `json:"context_token,omitempty"`
+	ContextToken  string    `json:"-"`
 	BodyText      string    `json:"body_text,omitempty"`
 	MediaPath     string    `json:"media_path,omitempty"`
 	MediaFileName string    `json:"media_file_name,omitempty"`
 	MediaMimeType string    `json:"media_mime_type,omitempty"`
-	RawJSON       string    `json:"raw_json"`
+	RawJSON       string    `json:"-"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -98,6 +98,6 @@ type WeComEvent struct {
 	MsgID     int64     `json:"msg_id,omitempty"`
 	BodyText  string    `json:"body_text,omitempty"`
 	MediaID   string    `json:"media_id,omitempty"`
-	RawJSON   string    `json:"raw_json"`
+	RawJSON   string    `json:"-"`
 	CreatedAt time.Time `json:"created_at"`
 }

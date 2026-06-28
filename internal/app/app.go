@@ -464,7 +464,7 @@ func (s *service) SendText(ctx context.Context, accountID, toUserID, text, conte
 		_ = s.store.AddLog(context.Background(), "ERROR", "outbound send failed", "message", fmt.Sprintf(`{"account_id":%q,"to_user_id":%q,"err":%q}`, accountID, toUserID, err.Error()))
 		return err
 	}
-	raw := fmt.Sprintf(`{"to_user_id":%q,"text":%q,"context_token":%q}`, toUserID, text, contextToken)
+	raw := outboundTextRawJSON(toUserID, text)
 	if err := s.store.CreateOutboundEvent(ctx, accountID, "text", toUserID, contextToken, text, "", "", "", raw); err != nil {
 		return err
 	}
@@ -521,7 +521,7 @@ func (s *service) SendMedia(ctx context.Context, accountID, toUserID, mediaType,
 	}
 
 	mimeType := detectOutboundMIME(normalizedType, filePath)
-	raw := fmt.Sprintf(`{"to_user_id":%q,"file_path":%q,"media_type":%q,"text":%q,"context_token":%q}`, toUserID, filePath, normalizedType, text, contextToken)
+	raw := outboundMediaRawJSON(toUserID, filePath, normalizedType, text)
 	if err := s.store.CreateOutboundEvent(ctx, accountID, normalizedType, toUserID, contextToken, text, filePath, fileName, mimeType, raw); err != nil {
 		return err
 	}
@@ -582,23 +582,11 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 		return err
 	}
 
-	payload, err := json.Marshal(map[string]any{
-		"account_id":      account.AccountID,
-		"base_url":        account.BaseURL,
-		"event_type":      ilink.DetectEventType(msg),
-		"body_text":       ilink.ExtractBodyText(msg),
-		"from_user_id":    msg.FromUserID,
-		"to_user_id":      msg.ToUserID,
-		"group_id":        msg.GroupID,
-		"session_id":      msg.SessionID,
-		"message_id":      msg.MessageID,
-		"context_token":   msg.ContextToken,
-		"media_path":      mediaPath,
-		"media_file_name": mediaFileName,
-		"media_mime_type": mediaMimeType,
-		"raw_message":     msg,
-		"received_at":     time.Now().UTC(),
-	})
+	payload, err := json.Marshal(inboundPayload(account, msg, mediaPath, mediaFileName, mediaMimeType, false))
+	if err != nil {
+		return err
+	}
+	logPayload, err := json.Marshal(inboundPayload(account, msg, mediaPath, mediaFileName, mediaMimeType, true))
 	if err != nil {
 		return err
 	}
@@ -616,7 +604,7 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 					s.logger.Error("agent handle ilink message failed", "err", err)
 				}
 			}()
-			_ = s.store.AddLog(ctx, "INFO", "inbound message routed to agent", "agent", string(payload))
+			_ = s.store.AddLog(ctx, "INFO", "inbound message routed to agent", "agent", string(logPayload))
 			return nil
 		}
 	}
@@ -634,11 +622,56 @@ func (s *service) HandleInboundMessage(ctx context.Context, account model.Accoun
 				break
 			}
 		}
-		return s.store.AddLog(ctx, "INFO", fmt.Sprintf("inbound message from %s: %s", msg.FromUserID, text), "inbound", string(payload))
+		return s.store.AddLog(ctx, "INFO", fmt.Sprintf("inbound message from %s: %s", msg.FromUserID, text), "inbound", string(logPayload))
 	}
 
 	go s.deliverWebhook(settings.WebhookURL, payload)
-	return s.store.AddLog(ctx, "INFO", "inbound message queued for webhook", "webhook", string(payload))
+	return s.store.AddLog(ctx, "INFO", "inbound message queued for webhook", "webhook", string(logPayload))
+}
+
+func outboundTextRawJSON(toUserID, text string) string {
+	data, _ := json.Marshal(map[string]any{
+		"to_user_id": toUserID,
+		"text":       text,
+	})
+	return string(data)
+}
+
+func outboundMediaRawJSON(toUserID, filePath, mediaType, text string) string {
+	data, _ := json.Marshal(map[string]any{
+		"to_user_id": toUserID,
+		"file_path":  filePath,
+		"media_type": mediaType,
+		"text":       text,
+	})
+	return string(data)
+}
+
+func inboundPayload(account model.Account, msg ilink.WeixinMessage, mediaPath, mediaFileName, mediaMimeType string, redact bool) map[string]any {
+	rawMsg := msg
+	if redact {
+		rawMsg.ContextToken = ""
+	}
+	payload := map[string]any{
+		"account_id":      account.AccountID,
+		"base_url":        account.BaseURL,
+		"event_type":      ilink.DetectEventType(msg),
+		"body_text":       ilink.ExtractBodyText(msg),
+		"from_user_id":    msg.FromUserID,
+		"to_user_id":      msg.ToUserID,
+		"group_id":        msg.GroupID,
+		"session_id":      msg.SessionID,
+		"message_id":      msg.MessageID,
+		"media_path":      mediaPath,
+		"media_file_name": mediaFileName,
+		"media_mime_type": mediaMimeType,
+		"raw_message":     rawMsg,
+		"received_at":     time.Now().UTC(),
+	}
+	if !redact {
+		payload["context_token"] = msg.ContextToken
+	}
+	return payload
 }
 
 func (s *service) resolveContextToken(ctx context.Context, accountID, toUserID, contextToken string) (string, error) {
