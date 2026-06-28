@@ -47,6 +47,14 @@ func (s *Server) handleCustomModeCreate(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "slug conflicts with built-in mode: " + cm.Slug})
 		return
 	}
+	reservedCmds := map[string]bool{
+		"reset": true, "mode": true, "help": true,
+		"support-setup": true, "support-profiles": true, "support-use": true,
+	}
+	if reservedCmds[cm.Slug] {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "slug conflicts with reserved command: " + cm.Slug})
+		return
+	}
 	created, err := store.CreateMode(r.Context(), cm)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)

@@ -34,6 +34,11 @@ type AgentConfig struct {
 	MonthlyTokenLimit int64
 }
 
+type providerCache struct {
+	mu      sync.RWMutex
+	clients map[string]*llm.Client
+}
+
 type Agent struct {
 	llmClient       *llm.Client
 	convMgr         *ConversationManager
@@ -45,8 +50,7 @@ type Agent struct {
 	supportBuilder  *support.Builder
 	customModeStore *CustomModeStore
 	usageStore      *UsageStore
-	llmClients      map[string]*llm.Client // keyed by provider ID
-	llmClientsMu    sync.RWMutex
+	llmCache        *providerCache
 }
 
 func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSender, logger *slog.Logger, cfg AgentConfig, supportSt *support.Store, cmStore *CustomModeStore, usStore *UsageStore) *Agent {
@@ -90,7 +94,7 @@ func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSend
 		supportBuilder:  builder,
 		customModeStore: cmStore,
 		usageStore:      usStore,
-		llmClients:      make(map[string]*llm.Client),
+		llmCache:        &providerCache{clients: make(map[string]*llm.Client)},
 	}
 }
 
@@ -106,7 +110,7 @@ func NewWithSender(base *Agent, sender MessageSender) *Agent {
 		supportBuilder:  base.supportBuilder,
 		customModeStore: base.customModeStore,
 		usageStore:      base.usageStore,
-		llmClients:      base.llmClients,
+		llmCache:        base.llmCache,
 	}
 }
 
@@ -507,12 +511,12 @@ func (a *Agent) UsageStore() *UsageStore {
 }
 
 func (a *Agent) resolveProviderClient(ctx context.Context, providerID string) *llm.Client {
-	a.llmClientsMu.RLock()
-	if c, ok := a.llmClients[providerID]; ok {
-		a.llmClientsMu.RUnlock()
+	a.llmCache.mu.RLock()
+	if c, ok := a.llmCache.clients[providerID]; ok {
+		a.llmCache.mu.RUnlock()
 		return c
 	}
-	a.llmClientsMu.RUnlock()
+	a.llmCache.mu.RUnlock()
 
 	if a.customModeStore == nil {
 		return a.llmClient
@@ -522,16 +526,16 @@ func (a *Agent) resolveProviderClient(ctx context.Context, providerID string) *l
 		return a.llmClient
 	}
 	c := llm.NewClient(provider.BaseURL, provider.APIKey, provider.Model)
-	a.llmClientsMu.Lock()
-	a.llmClients[providerID] = c
-	a.llmClientsMu.Unlock()
+	a.llmCache.mu.Lock()
+	a.llmCache.clients[providerID] = c
+	a.llmCache.mu.Unlock()
 	return c
 }
 
 func (a *Agent) InvalidateProviderCache(providerID string) {
-	a.llmClientsMu.Lock()
-	delete(a.llmClients, providerID)
-	a.llmClientsMu.Unlock()
+	a.llmCache.mu.Lock()
+	delete(a.llmCache.clients, providerID)
+	a.llmCache.mu.Unlock()
 }
 
 func helpText() string {
