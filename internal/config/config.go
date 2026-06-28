@@ -96,12 +96,12 @@ func Load() Config {
 		AgentSessionTTL:        envDurationOrDefault("WCFLINK_AGENT_SESSION_TTL", 168*time.Hour),
 		AgentDailyTokenLimit:   envInt64OrDefault("WCFLINK_AGENT_DAILY_TOKEN_LIMIT", 0),
 		AgentMonthlyTokenLimit: envInt64OrDefault("WCFLINK_AGENT_MONTHLY_TOKEN_LIMIT", 0),
-		LLMBaseURL:         envOrDefault("WCFLINK_LLM_BASE_URL", "https://api.deepseek.com"),
-		LLMAPIKey:          envOrDefault("WCFLINK_LLM_API_KEY", ""),
-		LLMModel:           envOrDefault("WCFLINK_LLM_MODEL", "deepseek-chat"),
-		LLMTemperature:     envFloatOrDefault("WCFLINK_LLM_TEMPERATURE", 0.7),
-		LLMMaxTokens:       envIntOrDefault("WCFLINK_LLM_MAX_TOKENS", 4096),
-		FetchMaxContent:    envIntOrDefault("WCFLINK_FETCH_MAX_CONTENT_LENGTH", 8000),
+		LLMBaseURL:             envOrDefault("WCFLINK_LLM_BASE_URL", "https://api.deepseek.com"),
+		LLMAPIKey:              envOrDefault("WCFLINK_LLM_API_KEY", ""),
+		LLMModel:               envOrDefault("WCFLINK_LLM_MODEL", "deepseek-chat"),
+		LLMTemperature:         envFloatOrDefault("WCFLINK_LLM_TEMPERATURE", 0.7),
+		LLMMaxTokens:           envIntOrDefault("WCFLINK_LLM_MAX_TOKENS", 4096),
+		FetchMaxContent:        envIntOrDefault("WCFLINK_FETCH_MAX_CONTENT_LENGTH", 8000),
 	}
 }
 

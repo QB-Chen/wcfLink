@@ -21,11 +21,11 @@ type TokenUsageRecord struct {
 }
 
 type UsageSummary struct {
-	UserID           string `json:"user_id"`
-	TotalPrompt      int64  `json:"total_prompt_tokens"`
-	TotalCompletion  int64  `json:"total_completion_tokens"`
-	TotalTokens      int64  `json:"total_tokens"`
-	RequestCount     int64  `json:"request_count"`
+	UserID          string `json:"user_id"`
+	TotalPrompt     int64  `json:"total_prompt_tokens"`
+	TotalCompletion int64  `json:"total_completion_tokens"`
+	TotalTokens     int64  `json:"total_tokens"`
+	RequestCount    int64  `json:"request_count"`
 }
 
 type UsageStore struct {

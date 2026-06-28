@@ -34,17 +34,17 @@ type AgentConfig struct {
 }
 
 type Agent struct {
-	llmClient        *llm.Client
-	convMgr          *ConversationManager
-	toolRegistry     *tools.Registry
-	sender           MessageSender
-	logger           *slog.Logger
-	config           AgentConfig
-	supportStore     *support.Store
-	supportBuilder   *support.Builder
-	customModeStore  *CustomModeStore
-	usageStore       *UsageStore
-	llmClients       map[string]*llm.Client // keyed by provider ID
+	llmClient       *llm.Client
+	convMgr         *ConversationManager
+	toolRegistry    *tools.Registry
+	sender          MessageSender
+	logger          *slog.Logger
+	config          AgentConfig
+	supportStore    *support.Store
+	supportBuilder  *support.Builder
+	customModeStore *CustomModeStore
+	usageStore      *UsageStore
+	llmClients      map[string]*llm.Client // keyed by provider ID
 }
 
 func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSender, logger *slog.Logger, cfg AgentConfig, supportSt *support.Store, cmStore *CustomModeStore, usStore *UsageStore) *Agent {

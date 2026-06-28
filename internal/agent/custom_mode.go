@@ -38,13 +38,13 @@ func (cm CustomMode) ToolList() []string {
 }
 
 type LLMProvider struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	BaseURL     string   `json:"base_url"`
-	APIKey      string   `json:"api_key,omitempty"`
-	Model       string   `json:"model"`
-	Temperature *float64 `json:"temperature,omitempty"`
-	MaxTokens   int      `json:"max_tokens,omitempty"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	BaseURL     string    `json:"base_url"`
+	APIKey      string    `json:"api_key,omitempty"`
+	Model       string    `json:"model"`
+	Temperature *float64  `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }
