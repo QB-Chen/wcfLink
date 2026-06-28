@@ -117,23 +117,41 @@ func (s *Store) KBAdd(ctx context.Context, art KBArticle) (KBArticle, error) {
 	return art, err
 }
 
-func (s *Store) KBSearch(ctx context.Context, query string, limit int) ([]KBArticle, error) {
+func (s *Store) KBSearch(ctx context.Context, query string, category string, limit int) ([]KBArticle, error) {
 	if limit <= 0 {
 		limit = 10
 	}
-	q := "%" + query + "%"
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, category, question, answer, tags, priority, created_at, updated_at
-		 FROM kb_articles
-		 WHERE question LIKE ? OR answer LIKE ? OR tags LIKE ? OR category LIKE ?
-		 ORDER BY priority DESC, updated_at DESC
-		 LIMIT ?`,
-		q, q, q, q, limit)
+	q := "%" + escapeLike(query) + "%"
+	var rows *sql.Rows
+	var err error
+	if category != "" {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, category, question, answer, tags, priority, created_at, updated_at
+			 FROM kb_articles
+			 WHERE category = ? AND (question LIKE ? OR answer LIKE ? OR tags LIKE ?)
+			 ORDER BY priority DESC, updated_at DESC
+			 LIMIT ?`,
+			category, q, q, q, limit)
+	} else {
+		rows, err = s.db.QueryContext(ctx,
+			`SELECT id, category, question, answer, tags, priority, created_at, updated_at
+			 FROM kb_articles
+			 WHERE question LIKE ? OR answer LIKE ? OR tags LIKE ? OR category LIKE ?
+			 ORDER BY priority DESC, updated_at DESC
+			 LIMIT ?`,
+			q, q, q, q, limit)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	return scanKBArticles(rows)
+}
+
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, "%", "\\%")
+	s = strings.ReplaceAll(s, "_", "\\_")
+	return s
 }
 
 func (s *Store) KBList(ctx context.Context, category string, limit int) ([]KBArticle, error) {
@@ -459,16 +477,31 @@ func (s *Store) ProfileCreate(ctx context.Context, p Profile) (Profile, error) {
 	isDefault := 0
 	if p.IsDefault {
 		isDefault = 1
-		if _, err := s.db.ExecContext(ctx, `UPDATE support_profiles SET is_default = 0`); err != nil {
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Profile{}, err
+	}
+	defer tx.Rollback()
+
+	if p.IsDefault {
+		if _, err := tx.ExecContext(ctx, `UPDATE support_profiles SET is_default = 0`); err != nil {
 			return Profile{}, err
 		}
 	}
-	_, err := s.db.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO support_profiles (id, name, company_name, industry, system_prompt, greeting, escalation_threshold, refund_policy, business_hours, extra_config, is_default, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		p.ID, p.Name, p.CompanyName, p.Industry, p.SystemPrompt, p.Greeting,
 		p.EscalationThreshold, p.RefundPolicy, p.BusinessHours, p.ExtraConfig, isDefault, now, now)
-	return p, err
+	if err != nil {
+		return Profile{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Profile{}, err
+	}
+	return p, nil
 }
 
 func (s *Store) ProfileGet(ctx context.Context, id string) (Profile, error) {

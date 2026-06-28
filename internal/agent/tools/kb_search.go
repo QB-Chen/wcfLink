@@ -66,7 +66,7 @@ func (t *KBSearchTool) Execute(ctx context.Context, arguments string) (string, e
 		args.Limit = 5
 	}
 
-	articles, err := t.store.KBSearch(ctx, args.Query, args.Limit)
+	articles, err := t.store.KBSearch(ctx, args.Query, args.Category, args.Limit)
 	if err != nil {
 		return fmt.Sprintf("知识库搜索失败: %v", err), nil
 	}

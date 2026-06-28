@@ -129,7 +129,8 @@ func (s *Server) handleKBSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	articles, err := store.KBSearch(r.Context(), query, limit)
+	category := r.URL.Query().Get("category")
+	articles, err := store.KBSearch(r.Context(), query, category, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -309,8 +310,25 @@ func (s *Server) handleOrderRefund(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
+	if req.Amount <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "amount must be greater than 0"})
+		return
+	}
 	if req.Reason == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "reason is required"})
+		return
+	}
+	order, err := store.OrderGet(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "order not found"})
+		return
+	}
+	if order.Status == "refunded" {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "order already refunded"})
+		return
+	}
+	if req.Amount > order.Amount {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "refund amount exceeds order amount"})
 		return
 	}
 	if err := store.OrderRefund(r.Context(), id, req.Amount, req.Reason); err != nil {
