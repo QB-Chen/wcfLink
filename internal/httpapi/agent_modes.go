@@ -200,6 +200,15 @@ func (s *Server) handleLLMProviderUpdate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	p.ID = id
+	// Preserve existing API key if the submitted value is a redacted placeholder.
+	if strings.Contains(p.APIKey, "***") {
+		existing, err := store.GetProvider(r.Context(), id)
+		if err != nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "llm provider not found"})
+			return
+		}
+		p.APIKey = existing.APIKey
+	}
 	if err := store.UpdateProvider(r.Context(), p); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
