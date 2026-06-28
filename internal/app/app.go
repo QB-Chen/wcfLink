@@ -123,15 +123,27 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*App, err
 			return nil, fmt.Errorf("migrate support tables: %w", err)
 		}
 
+		customModeStore := agent.NewCustomModeStore(st.DB())
+		if err := customModeStore.Migrate(ctx); err != nil {
+			return nil, fmt.Errorf("migrate custom mode tables: %w", err)
+		}
+
+		usageStore := agent.NewUsageStore(st.DB())
+		if err := usageStore.Migrate(ctx); err != nil {
+			return nil, fmt.Errorf("migrate usage tables: %w", err)
+		}
+
 		temp := cfg.LLMTemperature
 		agentInst = agent.New(llmClient, convMgr, sender, logger, agent.AgentConfig{
-			DefaultMode:     cfg.AgentDefaultMode,
-			MaxIterations:   cfg.AgentMaxIterations,
-			SessionTTL:      cfg.AgentSessionTTL,
-			Temperature:     &temp,
-			MaxTokens:       cfg.LLMMaxTokens,
-			FetchMaxContent: cfg.FetchMaxContent,
-		}, supportStore)
+			DefaultMode:       cfg.AgentDefaultMode,
+			MaxIterations:     cfg.AgentMaxIterations,
+			SessionTTL:        cfg.AgentSessionTTL,
+			Temperature:       &temp,
+			MaxTokens:         cfg.LLMMaxTokens,
+			FetchMaxContent:   cfg.FetchMaxContent,
+			DailyTokenLimit:   cfg.AgentDailyTokenLimit,
+			MonthlyTokenLimit: cfg.AgentMonthlyTokenLimit,
+		}, supportStore, customModeStore, usageStore)
 		logger.Info("agent enabled", "mode", cfg.AgentDefaultMode, "model", cfg.LLMModel)
 	}
 

@@ -137,6 +137,23 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/agent/conversations/", s.handleAgentDeleteConversation)
 	mux.HandleFunc("POST /api/agent/chat", s.handleAgentChat)
 
+	// Custom modes
+	mux.HandleFunc("GET /api/agent/modes/custom", s.handleCustomModeList)
+	mux.HandleFunc("POST /api/agent/modes/custom", s.handleCustomModeCreate)
+	mux.HandleFunc("GET /api/agent/modes/custom/", s.handleCustomModeGet)
+	mux.HandleFunc("PUT /api/agent/modes/custom/", s.handleCustomModeUpdate)
+	mux.HandleFunc("DELETE /api/agent/modes/custom/", s.handleCustomModeDelete)
+
+	// LLM providers
+	mux.HandleFunc("GET /api/agent/llm-providers", s.handleLLMProviderList)
+	mux.HandleFunc("POST /api/agent/llm-providers", s.handleLLMProviderCreate)
+	mux.HandleFunc("GET /api/agent/llm-providers/", s.handleLLMProviderGet)
+	mux.HandleFunc("PUT /api/agent/llm-providers/", s.handleLLMProviderUpdate)
+	mux.HandleFunc("DELETE /api/agent/llm-providers/", s.handleLLMProviderDelete)
+
+	// Usage statistics
+	mux.HandleFunc("GET /api/agent/usage", s.handleUsageSummary)
+
 	return withJSONContentType(s.withAPIAuth(withMaxRequestBody(mux)))
 }
 

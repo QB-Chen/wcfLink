@@ -104,7 +104,7 @@ func summarizeHistory(ctx context.Context, client *llm.Client, history []llm.Mes
 
 func rebuildCompacted(summary string, cutPoint int, history []llm.Message) []llm.Message {
 	if cutPoint >= len(history) {
-		cutPoint = 0
+		return history
 	}
 	compacted := make([]llm.Message, 0, len(history)-cutPoint+2)
 	compacted = append(compacted, llm.Message{

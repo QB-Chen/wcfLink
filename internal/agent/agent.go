@@ -23,26 +23,31 @@ type MessageSender interface {
 }
 
 type AgentConfig struct {
-	DefaultMode     string
-	MaxIterations   int
-	SessionTTL      time.Duration
-	Temperature     *float64
-	MaxTokens       int
-	FetchMaxContent int
+	DefaultMode       string
+	MaxIterations     int
+	SessionTTL        time.Duration
+	Temperature       *float64
+	MaxTokens         int
+	FetchMaxContent   int
+	DailyTokenLimit   int64
+	MonthlyTokenLimit int64
 }
 
 type Agent struct {
-	llmClient      *llm.Client
-	convMgr        *ConversationManager
-	toolRegistry   *tools.Registry
-	sender         MessageSender
-	logger         *slog.Logger
-	config         AgentConfig
-	supportStore   *support.Store
-	supportBuilder *support.Builder
+	llmClient        *llm.Client
+	convMgr          *ConversationManager
+	toolRegistry     *tools.Registry
+	sender           MessageSender
+	logger           *slog.Logger
+	config           AgentConfig
+	supportStore     *support.Store
+	supportBuilder   *support.Builder
+	customModeStore  *CustomModeStore
+	usageStore       *UsageStore
+	llmClients       map[string]*llm.Client // keyed by provider ID
 }
 
-func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSender, logger *slog.Logger, cfg AgentConfig, supportSt *support.Store) *Agent {
+func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSender, logger *slog.Logger, cfg AgentConfig, supportSt *support.Store, cmStore *CustomModeStore, usStore *UsageStore) *Agent {
 	if cfg.DefaultMode == "" {
 		cfg.DefaultMode = defaultMode
 	}
@@ -73,27 +78,33 @@ func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSend
 	}
 
 	return &Agent{
-		llmClient:      llmClient,
-		convMgr:        convMgr,
-		toolRegistry:   registry,
-		sender:         sender,
-		logger:         logger,
-		config:         cfg,
-		supportStore:   supportSt,
-		supportBuilder: builder,
+		llmClient:       llmClient,
+		convMgr:         convMgr,
+		toolRegistry:    registry,
+		sender:          sender,
+		logger:          logger,
+		config:          cfg,
+		supportStore:    supportSt,
+		supportBuilder:  builder,
+		customModeStore: cmStore,
+		usageStore:      usStore,
+		llmClients:      make(map[string]*llm.Client),
 	}
 }
 
 func NewWithSender(base *Agent, sender MessageSender) *Agent {
 	return &Agent{
-		llmClient:      base.llmClient,
-		convMgr:        base.convMgr,
-		toolRegistry:   base.toolRegistry,
-		sender:         sender,
-		logger:         base.logger,
-		config:         base.config,
-		supportStore:   base.supportStore,
-		supportBuilder: base.supportBuilder,
+		llmClient:       base.llmClient,
+		convMgr:         base.convMgr,
+		toolRegistry:    base.toolRegistry,
+		sender:          sender,
+		logger:          base.logger,
+		config:          base.config,
+		supportStore:    base.supportStore,
+		supportBuilder:  base.supportBuilder,
+		customModeStore: base.customModeStore,
+		usageStore:      base.usageStore,
+		llmClients:      base.llmClients,
 	}
 }
 
@@ -122,7 +133,28 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 		return err
 	}
 
+	// Resolve mode: check built-in modes first, then custom modes.
 	mode, ok := modes.Get(conv.Mode)
+	var activeClient *llm.Client
+	activeClient = a.llmClient
+
+	if !ok && a.customModeStore != nil {
+		cm, cmErr := a.customModeStore.GetModeBySlug(ctx, conv.Mode)
+		if cmErr == nil {
+			mode = modes.ModeConfig{
+				Slug:           cm.Slug,
+				Name:           cm.Name,
+				SystemPrompt:   cm.SystemPrompt,
+				AvailableTools: cm.ToolList(),
+				WelcomeMessage: cm.WelcomeMessage,
+			}
+			ok = true
+			// Multi-LLM: resolve per-mode LLM provider.
+			if cm.LLMProviderID != "" {
+				activeClient = a.resolveProviderClient(ctx, cm.LLMProviderID)
+			}
+		}
+	}
 	if !ok {
 		mode = modes.IcemarkMode
 	}
@@ -131,6 +163,14 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 	if conv.Mode == "support" && a.supportStore != nil {
 		if profile, err := a.supportStore.ProfileGetDefault(ctx); err == nil {
 			systemPrompt = support.GenerateCustomPrompt(systemPrompt, profile)
+		}
+	}
+
+	// Usage limit check.
+	if a.usageStore != nil && (a.config.DailyTokenLimit > 0 || a.config.MonthlyTokenLimit > 0) {
+		allowed, limitMsg := a.usageStore.CheckLimit(ctx, session.UserID, a.config.DailyTokenLimit, a.config.MonthlyTokenLimit)
+		if !allowed {
+			return a.sendReply(ctx, session, limitMsg)
 		}
 	}
 
@@ -148,7 +188,7 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 			// Reuse cached summary from a previous iteration.
 			history = rebuildCompacted(cachedSummary, cachedCutPoint, history)
 		} else if needsSummarization(systemPrompt, history) {
-			summary, cutPoint, sErr := summarizeHistory(ctx, a.llmClient, history, a.config.Temperature, a.config.MaxTokens)
+			summary, cutPoint, sErr := summarizeHistory(ctx, activeClient, history, a.config.Temperature, a.config.MaxTokens)
 			if sErr == nil && summary != "" {
 				cachedSummary = summary
 				cachedCutPoint = cutPoint
@@ -176,9 +216,24 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 			"message_count", len(messages),
 		)
 
-		resp, err := a.llmClient.Chat(ctx, req)
+		resp, err := activeClient.Chat(ctx, req)
 		if err != nil {
 			return a.sendError(ctx, session, fmt.Errorf("AI 服务暂时不可用，请稍后再试: %w", err))
+		}
+
+		// Record token usage.
+		if a.usageStore != nil && resp.Usage.TotalTokens > 0 {
+			_ = a.usageStore.Record(ctx, TokenUsageRecord{
+				ConversationID:   conv.ID,
+				UserID:           session.UserID,
+				ChannelType:      session.ChannelType,
+				Mode:             conv.Mode,
+				Model:            req.Model,
+				PromptTokens:     resp.Usage.PromptTokens,
+				CompletionTokens: resp.Usage.CompletionTokens,
+				TotalTokens:      resp.Usage.TotalTokens,
+				CreatedAt:        time.Now().UTC(),
+			})
 		}
 
 		assistantMsg := resp.Choices[0].Message
@@ -285,6 +340,26 @@ func (a *Agent) handleCommand(ctx context.Context, session SessionKey, cmd strin
 				return a.sendError(ctx, session, err)
 			}
 			return a.sendReply(ctx, session, modeConfig.WelcomeMessage)
+		}
+		// Check custom modes.
+		if a.customModeStore != nil {
+			if cm, cmErr := a.customModeStore.GetModeBySlug(ctx, cmd); cmErr == nil {
+				conv, err := a.convMgr.GetOrCreate(ctx, session, a.config.DefaultMode)
+				if err != nil {
+					return a.sendError(ctx, session, err)
+				}
+				if err := a.convMgr.UpdateMode(ctx, conv.ID, cmd); err != nil {
+					return a.sendError(ctx, session, err)
+				}
+				if err := a.convMgr.ClearMessages(ctx, conv.ID); err != nil {
+					return a.sendError(ctx, session, err)
+				}
+				welcome := cm.WelcomeMessage
+				if welcome == "" {
+					welcome = fmt.Sprintf("已切换到「%s」模式。", cm.Name)
+				}
+				return a.sendReply(ctx, session, welcome)
+			}
 		}
 		return a.sendReply(ctx, session, fmt.Sprintf("未知命令: /%s\n\n%s", cmd, helpText()))
 	}
@@ -419,6 +494,30 @@ func (a *Agent) handleSupportUse(ctx context.Context, session SessionKey, rawTex
 
 func (a *Agent) SupportStore() *support.Store {
 	return a.supportStore
+}
+
+func (a *Agent) CustomModeStore() *CustomModeStore {
+	return a.customModeStore
+}
+
+func (a *Agent) UsageStore() *UsageStore {
+	return a.usageStore
+}
+
+func (a *Agent) resolveProviderClient(ctx context.Context, providerID string) *llm.Client {
+	if c, ok := a.llmClients[providerID]; ok {
+		return c
+	}
+	if a.customModeStore == nil {
+		return a.llmClient
+	}
+	provider, err := a.customModeStore.GetProvider(ctx, providerID)
+	if err != nil {
+		return a.llmClient
+	}
+	c := llm.NewClient(provider.BaseURL, provider.APIKey, provider.Model)
+	a.llmClients[providerID] = c
+	return c
 }
 
 func helpText() string {
