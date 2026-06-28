@@ -134,13 +134,27 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 		}
 	}
 
+	// Cache summarization result across iterations to avoid repeated LLM calls.
+	var cachedSummary string
+	cachedCutPoint := -1
+
 	for iteration := 0; iteration < a.config.MaxIterations; iteration++ {
 		history, err := a.convMgr.GetMessages(ctx, conv.ID)
 		if err != nil {
 			return a.sendError(ctx, session, fmt.Errorf("获取对话历史失败: %w", err))
 		}
 
-		history = compactHistory(ctx, a.llmClient, systemPrompt, history, a.config.Temperature, a.config.MaxTokens)
+		if cachedCutPoint >= 0 {
+			// Reuse cached summary from a previous iteration.
+			history = rebuildCompacted(cachedSummary, cachedCutPoint, history)
+		} else if needsSummarization(systemPrompt, history) {
+			summary, cutPoint, sErr := summarizeHistory(ctx, a.llmClient, history, a.config.Temperature, a.config.MaxTokens)
+			if sErr == nil && summary != "" {
+				cachedSummary = summary
+				cachedCutPoint = cutPoint
+				history = rebuildCompacted(summary, cutPoint, history)
+			}
+		}
 
 		messages := make([]llm.Message, 0, len(history)+1)
 		messages = append(messages, llm.Message{Role: llm.RoleSystem, Content: systemPrompt})

@@ -42,16 +42,26 @@ func summarizeHistory(ctx context.Context, client *llm.Client, history []llm.Mes
 		return "", 0, nil
 	}
 
-	cutPoint := len(history) / 2
-	// Ensure we cut at a clean boundary: keep pairs of user/assistant messages together
-	for cutPoint > 0 && cutPoint < len(history) {
-		if history[cutPoint].Role == llm.RoleUser {
+	// Find a clean cut boundary at a RoleUser message.
+	// Search backward from midpoint first, then forward, to always land on a user message.
+	cutPoint := -1
+	mid := len(history) / 2
+	for i := mid; i > 0; i-- {
+		if history[i].Role == llm.RoleUser {
+			cutPoint = i
 			break
 		}
-		cutPoint++
 	}
-	if cutPoint >= len(history) {
-		cutPoint = len(history) / 2
+	if cutPoint < 0 {
+		for i := mid + 1; i < len(history); i++ {
+			if history[i].Role == llm.RoleUser {
+				cutPoint = i
+				break
+			}
+		}
+	}
+	if cutPoint <= 0 || cutPoint >= len(history) {
+		return "", 0, nil
 	}
 
 	oldMessages := history[:cutPoint]
@@ -92,17 +102,11 @@ func summarizeHistory(ctx context.Context, client *llm.Client, history []llm.Mes
 	return resp.Choices[0].Message.Content, cutPoint, nil
 }
 
-func compactHistory(ctx context.Context, client *llm.Client, systemPrompt string, history []llm.Message, temperature *float64, maxTokens int) []llm.Message {
-	if !needsSummarization(systemPrompt, history) {
-		return history
+func rebuildCompacted(summary string, cutPoint int, history []llm.Message) []llm.Message {
+	if cutPoint >= len(history) {
+		cutPoint = 0
 	}
-
-	summary, cutPoint, err := summarizeHistory(ctx, client, history, temperature, maxTokens)
-	if err != nil || summary == "" {
-		return history
-	}
-
-	compacted := make([]llm.Message, 0, len(history)-cutPoint+1)
+	compacted := make([]llm.Message, 0, len(history)-cutPoint+2)
 	compacted = append(compacted, llm.Message{
 		Role:    llm.RoleUser,
 		Content: fmt.Sprintf("[之前的对话摘要]\n%s", summary),
