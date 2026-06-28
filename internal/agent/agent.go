@@ -53,6 +53,9 @@ func New(llmClient *llm.Client, convMgr *ConversationManager, sender MessageSend
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewWebSearchTool())
 	registry.Register(tools.NewURLFetchTool(cfg.FetchMaxContent))
+	registry.Register(tools.NewSocialSearchTool())
+	registry.Register(tools.NewReportGenTool())
+	registry.Register(tools.NewPrototypeGenTool())
 
 	if supportSt != nil {
 		registry.Register(tools.NewKBSearchTool(supportSt))
@@ -136,6 +139,8 @@ func (a *Agent) HandleMessage(ctx context.Context, session SessionKey, userMessa
 		if err != nil {
 			return a.sendError(ctx, session, fmt.Errorf("获取对话历史失败: %w", err))
 		}
+
+		history = compactHistory(ctx, a.llmClient, systemPrompt, history, a.config.Temperature, a.config.MaxTokens)
 
 		messages := make([]llm.Message, 0, len(history)+1)
 		messages = append(messages, llm.Message{Role: llm.RoleSystem, Content: systemPrompt})

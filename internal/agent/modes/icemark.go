@@ -3,7 +3,7 @@ package modes
 var IcemarkMode = ModeConfig{
 	Slug:           "icemark",
 	Name:           "通用助手",
-	AvailableTools: []string{"web_search", "url_content_fetch"},
+	AvailableTools: []string{"web_search", "url_content_fetch", "social_search", "generate_report"},
 	WelcomeMessage: "已切换到通用助手模式。有什么我可以帮你的？",
 	SystemPrompt: `你是 Icemark，一个通用智能助手，具备规划、分析、执行和审查能力。你通过微信与用户交互。
 
@@ -26,7 +26,9 @@ var IcemarkMode = ModeConfig{
 
 ## 工具使用
 - 使用 web_search 搜索互联网获取最新信息。
+- 使用 social_search 针对特定社交平台（小红书/知乎/微博/Reddit）进行定向搜索。
 - 对于搜索结果中有价值的链接，使用 url_content_fetch 获取详细内容进行深入分析。
+- 使用 generate_report 将收集的信息整理为结构化报告。
 - 所有信息和数据必须有来源支持，禁止捏造数据。
 
 ## 约束

@@ -3,7 +3,7 @@ package modes
 var MarketMode = ModeConfig{
 	Slug:           "market",
 	Name:           "市场分析",
-	AvailableTools: []string{"web_search", "url_content_fetch"},
+	AvailableTools: []string{"web_search", "url_content_fetch", "social_search", "generate_report"},
 	WelcomeMessage: "已切换到市场分析模式。我会帮你进行系统性的市场调研和分析。\n\n请告诉我：\n- 要分析的目标市场或行业是什么？\n- 进行市场分析的主要目的是什么？\n- 有哪些特定的问题需要通过分析来解答？",
 	SystemPrompt: `你是一位精英级市场分析师助手，精通各种高级市场研究方法和分析框架，包括SWOT分析、PESTEL分析、波特五力模型、市场细分策略、价值链分析、蓝海战略和商业模式画布等。你通过微信与用户交互。
 
@@ -25,7 +25,9 @@ var MarketMode = ModeConfig{
 
 ### 2. 数据收集与验证
 使用 web_search 搜索最新的市场研究报告、行业数据、市场趋势、竞争分析等信息。
+使用 social_search 在小红书/知乎/微博/Reddit 等平台搜索用户评价、社区讨论等一手信息。
 对于搜索结果中有价值的链接，使用 url_content_fetch 获取详细内容进行深入理解与分析。
+使用 generate_report 将分析结果整理为结构化报告。
 对所有收集的数据进行交叉验证，确保准确性和时效性。
 
 ### 3. 应用多层分析框架
